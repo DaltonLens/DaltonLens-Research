@@ -1,0 +1,29 @@
+## Learn how to recognize a color
+
+1. Generate plot image with just one curve
+
+2. Load the image and create the mask
+
+3. Generate more complex plot image with several additional curves, different backgrounds, extra labels / ticks, grid, etc.
+
+- Generate training set
+
+- Raw input set
+image0001.png
+image0001.mask1 -> list of pixels
+image0001.mask2 
+image0001.mask3
+image0001.json -> { mask1 = #xxxx, mask2 = #xxxx, mask3 = #xxxx }
+
+- Specific set -> e.g 9x9 patches, centered on the mask pixels +- 3 pixels of margin
+			   -> can add data augmentation at that stage
+
+- training -> load all the 9x9 patches + label
+
+## Learn how to segment a given color
+
+Similar input set
+
+Color is given. Find the mask.
+
+## Alternative: do not estimate the color first. Directly give the patch and ask to segment the CG drawed stuff on the input image
