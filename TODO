@@ -9,16 +9,45 @@
 - Generate training set
 
 - Raw input set
-image0001.png
-image0001.mask1 -> list of pixels
-image0001.mask2 
-image0001.mask3
-image0001.json -> { mask1 = #xxxx, mask2 = #xxxx, mask3 = #xxxx }
 
 - Specific set -> e.g 9x9 patches, centered on the mask pixels +- 3 pixels of margin
 			   -> can add data augmentation at that stage
 
 - training -> load all the 9x9 patches + label
+
+- Script 1:
+	
+	Generate bunch of images with mask and true color metadata. You know that any pixel on the mask has the given color.
+
+	Q: also learn to classify whether there is something? Classify the background?
+
+	metadata.json
+	Class 0 -> background
+	Class 1 -> color
+	Class 2 -> color
+	Class 3 -> color
+
+	Mask -> class for each pixel
+
+	Only 256x256 images?
+
+	JPEG artefacts?
+
+	Rotation / scale / transforms?
+
+	Output :
+	matplotlib/image0001.png
+	matplotlib/image0001.mask -> label for each pixel
+	matplotlib/image0001.json -> { label0 = #xxxx, label1 = #xxxx, label2 = #xxxx }
+	
+	Separate script to add jpeg artefacts
+	matplotlib/jpeg/image0001.xxx
+
+- Script 2:
+
+	Extract patches from the images
+
+	Train to get the right output: color of the central pixel and class background or not
 
 ## Learn how to segment a given color
 
