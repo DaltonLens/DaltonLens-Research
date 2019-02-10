@@ -19,7 +19,7 @@ def parse_command_line():
     args = parser.parse_args()
     return args
 
-def random_rgb():
+def random_bgr():
     return (random.randint(0,255), random.randint(0,255), random.randint (0,255))
 
 def color_index_to_label(i):
@@ -83,10 +83,10 @@ class TrainingImage:
         cv2.imwrite (labels_path, self.label_image)
 
         jsonEntries = []
-        for label, color in self.colors_by_label.items():
+        for label, bgr_color in self.colors_by_label.items():
             jsonEntries.append({
                 'label': label,
-                'color': list(color)
+                'rgb_color': [bgr_color[2], bgr_color[1], bgr_color[0]],
             })
 
         with open(json_path, 'w') as f:
@@ -102,9 +102,9 @@ class ImageGenerator:
 
     def generate_with_random_colors(self):
         colors = []
-        bg_color = random_rgb()
+        bg_color = random_bgr()
         for i in range(0, num_classes_per_image):
-            colors.append(random_rgb())
+            colors.append(random_bgr())
         
         self.image_buffer[:] = bg_color
         self.mask_buffer[:] = 0
