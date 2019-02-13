@@ -42,7 +42,7 @@ if __name__ == "__main__":
     model.add(layers.Dense(64, activation='relu'))
     model.add(layers.Dense(64, activation='relu'))
     # Add a softmax layer with 3 output units:
-    model.add(layers.Dense(3, activation='relu', name='final'))
+    model.add(layers.Dense(3, activation='linear', name='final'))
 
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=0.001),
               loss='mse',
