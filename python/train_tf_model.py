@@ -20,6 +20,25 @@ def parse_command_line():
     args = parser.parse_args()
     return args
 
+def build_naive_dense_model():
+    model = tf.keras.Sequential()
+    # Adds a densely-connected layer with 64 units to the model:
+    model.add(layers.Flatten(name='flatten', input_shape=(patch_size,patch_size,3)))
+    model.add(layers.Dense(64, activation='relu'))
+    model.add(layers.Dense(32, activation='relu'))
+    # Add a softmax layer with 3 output units:
+    model.add(layers.Dense(3, activation='linear', name='final'))
+    return model
+
+def build_naive_cnn_model():
+    model = tf.keras.Sequential()
+    model.add(layers.Conv2D(32, kernel_size=3, activation='relu', input_shape=(patch_size,patch_size,3)))
+    model.add(layers.MaxPooling2D(pool_size = (2, 2)))
+    model.add(layers.Flatten())
+    model.add(layers.Dense(32, activation='relu'))
+    model.add(layers.Dense(3, activation='linear'))
+    return model
+
 if __name__ == "__main__":
     args = parse_command_line()
 
@@ -36,13 +55,8 @@ if __name__ == "__main__":
         it = train_dataset.make_one_shot_iterator()
         print (sess.run(it.get_next()))
 
-    model = tf.keras.Sequential()
-    # Adds a densely-connected layer with 64 units to the model:
-    model.add(layers.Flatten(name='flatten', input_shape=(patch_size,patch_size,3)))
-    model.add(layers.Dense(64, activation='relu'))
-    model.add(layers.Dense(64, activation='relu'))
-    # Add a softmax layer with 3 output units:
-    model.add(layers.Dense(3, activation='linear', name='final'))
+    # model = build_naive_dense_model()
+    model = build_naive_cnn_model()
 
     model.compile(optimizer=tf.keras.optimizers.Adam(lr=0.001),
               loss='mse',
@@ -58,6 +72,7 @@ if __name__ == "__main__":
     #                                              save_weights_only=True,
     #                                              verbose=1)
 
-    model.fit(train_dataset, epochs=20, steps_per_epoch=1000, callbacks=[cb_board])
+    # model.fit(train_dataset, epochs=20, steps_per_epoch=1000, callbacks=[cb_board])
+    model.fit(train_dataset, epochs=20, steps_per_epoch=200, callbacks=[cb_board])
 
     model.save("simple1.h5")

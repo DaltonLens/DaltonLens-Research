@@ -29,10 +29,11 @@ if __name__ == "__main__":
     
     train_dataset = tf.data.TFRecordDataset(train_files)
     train_dataset = train_dataset.map(lambda r: patch_example_parser(r))
-    train_dataset = train_dataset.shuffle(10000)
     
     model = tf.keras.models.load_model(args.model)
     print (model.summary())
+
+    print ('Evaluation = ', model.evaluate (train_dataset.batch(30), steps=30))
 
     sess = tf.keras.backend.get_session()
 
@@ -55,7 +56,6 @@ if __name__ == "__main__":
         print ('label = ', (label*255).astype(np.uint8))
         print ('imageCenter = ', rgb_image[half_patch_size, half_patch_size])
         print ('predicted = ', predicted_rgb)
-
 
         cv2.imshow('patch', image)
         k = cv2.waitKey(0)
