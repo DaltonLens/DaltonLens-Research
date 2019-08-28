@@ -1,1 +1,4 @@
 generated/
+logs/
+__pycache__/
+.vscode/
