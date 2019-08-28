@@ -5,6 +5,7 @@ from collections import namedtuple
 
 import cv2
 import numpy as np
+import time
 
 target_size = (256, 256)
 num_classes_per_image = 4
@@ -16,6 +17,8 @@ def parse_command_line():
     parser = argparse.ArgumentParser(description='Generating training images using OpenCV draw')
     parser.add_argument('output_dir', help='Output folder for the generated images')
     parser.add_argument('--debug', help='Toggle visual debugging', default=False, action='store_const', const=True)
+    parser.add_argument('--num-drawings', help='Number of distinct drawings', default=100, type=int)
+    parser.add_argument('--num-images-per-drawing', help='Number of images with distinct colors per drawing', default=100, type=int)
     args = parser.parse_args()
     return args
 
@@ -82,12 +85,16 @@ class TrainingImage:
         cv2.imwrite (image_path, self.image_buffer)
         cv2.imwrite (labels_path, self.label_image)
 
-        jsonEntries = []
+        jsonEntries = {}
+        jsonEntries['size_cols_rows'] = [self.image_buffer.shape[1], self.image_buffer.shape[0]]
+        jsonEntries['tags'] = ['opencv', 'lines', 'uniform_background']
+        jsonLabels = []
         for label, bgr_color in self.colors_by_label.items():
-            jsonEntries.append({
+            jsonLabels.append({
                 'label': label,
                 'rgb_color': [bgr_color[2], bgr_color[1], bgr_color[0]],
             })
+        jsonEntries['labels'] = jsonLabels
 
         with open(json_path, 'w') as f:
             f.write (json.dumps(jsonEntries))
@@ -104,7 +111,16 @@ class ImageGenerator:
         colors = []
         bg_color = random_bgr()
         for i in range(0, num_classes_per_image):
-            colors.append(random_bgr())
+            while True:
+                candidate_bgr = random_bgr()
+                good_candidate = True
+                for other_bgr in colors + [bg_color]:
+                    if (np.amax(np.abs(np.subtract(candidate_bgr, other_bgr))) < 20):
+                        good_candidate = False
+                        break
+                if good_candidate:
+                    colors.append(random_bgr())
+                    break
         
         self.image_buffer[:] = bg_color
         self.mask_buffer[:] = 0
@@ -129,14 +145,15 @@ class ImageGenerator:
 
 if __name__ == "__main__":
     args = parse_command_line()
-    random.seed (42)
+    random.seed (time.time())
 
     if not os.path.isdir(args.output_dir):
         os.makedirs(args.output_dir)
 
-    for generator_i in range(0, 10):
+    for generator_i in range(0, args.num_drawings):
+        print ('Generating {} / {}'.format(generator_i, args.num_drawings))
         image_generator = ImageGenerator()
-        for color_i in range(0, 10):
+        for color_i in range(0, args.num_images_per_drawing):
             training_image = image_generator.generate_with_random_colors()
             training_image.write (os.path.join (args.output_dir, 'img-{:05d}-{:03d}'.format(generator_i, color_i)))
 
