@@ -5,16 +5,17 @@ import glob
 from collections import namedtuple
 
 import cv2
+import time
 import numpy as np
 
 import tensorflow as tf
 
 from common import *
 
-num_patches_per_image = 10
-
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Generating training images using OpenCV draw')
+    parser.add_argument('--num-patches-per-image', help='Number of patches sampled from each image', default=100, type=int)
+    parser.add_argument('--dump-patches', help='Save individual patch files', default=False, action='store_const', const=True)
     parser.add_argument('input_dir', help='Input folder with all the images')
     parser.add_argument('output_dir', help='Output folder with all the patches')
     args = parser.parse_args()
@@ -28,7 +29,9 @@ class PatchGenerator:
 
     def oneshot_generator(self):
         patch_idx = 0
-        for jsonFile in glob.iglob(self.args.input_dir + '/**/*.json', recursive=True):
+        all_json_files = list(glob.iglob(self.args.input_dir + '/**/*.json', recursive=True))
+        for json_file_i, jsonFile in enumerate(all_json_files):
+            print ("Processing image {} / {}".format(json_file_i, len(all_json_files)))
             rendered_file = jsonFile.replace('.json', '.rendered.png')
             labels_file = jsonFile.replace('.json', '.labels.png')
             
@@ -41,7 +44,7 @@ class PatchGenerator:
                     rgb_color_by_label[label_color['label']] = label_color['rgb_color']
 
             w, h  = labels_image.shape[1], labels_image.shape[1]
-            for i in range(0, num_patches_per_image):
+            for i in range(0, self.args.num_patches_per_image):
                 label_should_be_background = random.randint(0, 1) == 1
                 
                 found = False
@@ -55,25 +58,27 @@ class PatchGenerator:
                     found = ((label == 0 and label_should_be_background)
                             or (label > 0 and not label_should_be_background))
 
-                print ('label', label)
-                print ('patch_center', patch_center)
+                # print ('label', label)
+                # print ('patch_center', patch_center)
                 rStart = patch_center[1] - half_patch_size
                 rEnd = patch_center[1] + half_patch_size + 1
                 cStart = patch_center[0] - half_patch_size
                 cEnd = patch_center[0] + half_patch_size + 1
                 patch_image = rendered_image[rStart:rEnd, cStart:cEnd, :]
-                print ('patch_image', patch_image.shape)
+                # print ('patch_image', patch_image.shape)
 
                 patch_prefix = os.path.join (args.output_dir, 'patch-{:09d}'.format(patch_idx))
                 patch_image_path = patch_prefix + '.png'
-                cv2.imwrite(patch_image_path, patch_image)
-                patch_json_path = patch_prefix + '.json'
-                patch_json = { 
-                    'rgb_color': rgb_color_by_label[label],
-                    'is_background': label_should_be_background,
-                }
-                with open(patch_json_path, 'w') as f:
-                    f.write (json.dumps(patch_json))
+
+                if self.args.dump_patches:
+                    cv2.imwrite(patch_image_path, patch_image)
+                    patch_json_path = patch_prefix + '.json'
+                    patch_json = { 
+                        'rgb_color': rgb_color_by_label[label],
+                        'is_background': label_should_be_background,
+                    }
+                    with open(patch_json_path, 'w') as f:
+                        f.write (json.dumps(patch_json))
 
                 yield TrainingPatch(patch=patch_image, 
                                     rgb_color=rgb_color_by_label[label], 
@@ -112,7 +117,7 @@ def patch_to_tfexample(image_data, image_format, height, width, rgb_color, is_ba
 
 if __name__ == "__main__":
     args = parse_command_line()
-    random.seed (42)
+    random.seed (time.time())
 
     if not os.path.isdir(args.output_dir):
         os.makedirs(args.output_dir)

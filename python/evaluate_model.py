@@ -52,10 +52,15 @@ if __name__ == "__main__":
         print (predicted_rgb.shape)
         predicted_rgb = (predicted_rgb * 255).astype(np.uint8)
 
+        label_rgb = (label*255).astype(np.uint8)
+        center_rgb = rgb_image[half_patch_size, half_patch_size]
+
         print ()
-        print ('label = ', (label*255).astype(np.uint8))
-        print ('imageCenter = ', rgb_image[half_patch_size, half_patch_size])
+        print ('label = ', label_rgb)
+        print ('imageCenter = ', center_rgb)
         print ('predicted = ', predicted_rgb)
+        print ('Error center = ', np.abs(center_rgb.astype(np.int32) - label_rgb))
+        print ('Error predicted = ', np.abs(predicted_rgb.astype(np.int32) - label_rgb))
 
         cv2.imshow('patch', image)
         k = cv2.waitKey(0)
