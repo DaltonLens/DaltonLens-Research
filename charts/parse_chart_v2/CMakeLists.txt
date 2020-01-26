@@ -1,0 +1,6 @@
+project(parse_chart_v2)
+set(CMAKE_CXX_STANDARD 17)
+find_package( OpenCV REQUIRED )
+include_directories (${OpenCV_INCLUDE_DIRS})
+add_executable(parse_chart_v2 parse_chart_v2.cpp)
+target_link_libraries(parse_chart_v1 ${OpenCV_LIBS} )
