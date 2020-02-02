@@ -13,36 +13,14 @@ Optimize via alpha-expansion.
 
 #include <opencv2/opencv.hpp>
 
+#include "dl_opencv.h"
+#include "dl_quantization.h"
+
 #include <unordered_map>
 #include <utility>
 #include <cstdio>
 
 using namespace cv;
-
-#define for_all_rc(im) \
-    for (int r = 0; r < im.rows; ++r) \
-    for (int c = 0; c < im.cols; ++c)
-
-struct Neighbor
-{
-    int dr, dc;
-    uint8_t bitmask;
-    
-    // Corresponding bitmask in the neighbor. For example if my neighbor is (-1, 0) with bitmask 0b10, 
-    // then I am neighbor (1,0) for that pixel, and the bitmask for me in that pixel is 0b01000000.
-    uint8_t reprocBitmask;
-};
-
-constexpr std::array<Neighbor, 8> neighbors3x3 = {
-    Neighbor{-1, -1, 0b00000001, 0b10000000},
-    Neighbor{-1,  0, 0b00000010, 0b01000000},
-    Neighbor{-1,  1, 0b00000100, 0b00100000},
-    Neighbor{ 0, -1, 0b00001000, 0b00010000},
-    Neighbor{ 0,  1, 0b00010000, 0b00001000},
-    Neighbor{ 1, -1, 0b00100000, 0b00000100},
-    Neighbor{ 1,  0, 0b01000000, 0b00000010},
-    Neighbor{ 1,  1, 0b10000000, 0b00000001},
-};
 
 inline short rgbDist(cv::Vec3b lhs, cv::Vec3b rhs)
 {
@@ -172,7 +150,7 @@ int main (int argc, char* argv[])
     
     if (argc != 2)
     {
-        std::cerr << "Usage: parse_chart_v1 input_image" << std::endl;
+        std::cerr << "Usage: parse_chart_v2 input_image" << std::endl;
         return 1;
     }
 
@@ -277,152 +255,20 @@ int main (int argc, char* argv[])
             alphaImage(r,c) = 1.0;
     }
 
-    cv::Mat1i labels (im.cols, im.rows);
-    labels = -1; // no labels by default.
+    MedianCut quantizer;
+    std::vector<cv::Vec3b> palette;
+    cv::Mat1b indexed;
+    const int numColors = 16; // power of 2
+    quantizer.apply (im, numColors, indexed, palette);
+    cv::Mat3b indexedAsRgb = indexedToRgb(indexed, palette);
 
-    // Assign the 0 label to background pixels.
-    for_all_rc (im)
-    {
-        if (bgMask(r,c))
-            labels(r,c) = 0;
-    }
-
-    cv::Mat1b connectivityBitmask (im.cols, im.rows);
-
-    // FIXME: here we meant to solve for alpha and the color in the
-    // entire neighorhood to detect inconsistent values of alpha.
-    // But keeping it this way for now for simplicity.
-    for_all_rc (im)
-    {
-        const cv::Vec3b currRgb = im(r,c);
-        const cv::Vec3b currBgColor = bgColorIm(r,c);
-        uint8_t bitmask = 0;
-        for (const auto& neighb : neighbors3x3)
-        {
-            const int otherR = r+neighb.dr;
-            const int otherC = c+neighb.dc;
-            const cv::Vec3b otherRgb = im(otherR, otherC);
-            int d = std::get<0>(alphaAwareDist(currRgb, otherRgb, currBgColor));
-            if (d < 10)
-            {
-                bitmask |= neighb.bitmask;
-            }
-        }
-        connectivityBitmask(r,c) = bitmask;
-    }
-
-    imshow("connectivityBitmaskStep1", connectivityBitmask);
+    fprintf (stderr, "Palette: \n");
+    for (const auto& rgb : palette)
+        fprintf (stderr, "\t[%d %d %d]\n", rgb[0], rgb[1], rgb[2]);
     
-    // Finalize the connectivity by only connecting pixels that manually agree
-    // that they are connected. Actually useless right now because the
-    // neighborhood check is symmetric, but this is going to change later
-    // since the entire 3x3 neighboorhood will be used.
-    for_all_rc (im)
-    {
-        uint8_t bitmask = connectivityBitmask(r,c);
-        for (const auto& neighb : neighbors3x3)
-        {
-            if (bitmask & neighb.bitmask)
-            {
-                uint8_t neighbBitmask = connectivityBitmask(r+neighb.dr,c+neighb.dc);
-                // If the neighbor is not connected to me, then disconnect myself from it,
-                if (!(neighbBitmask & neighb.reprocBitmask))
-                {
-                    bitmask ^= neighb.bitmask;
-                    neighbBitmask ^= connectivityBitmask(r+neighb.dr,c+neighb.dc);
-                }
-            }
-        }
-        connectivityBitmask(r,c) = bitmask;
-    }
-    
-    imshow("connectivityBitmaskSymmetric", connectivityBitmask);
-    
-    cv::waitKey(1);
+    cv::imshow("indexed", indexed);
+    cv::imshow("quantized", indexedAsRgb);
+    cv::waitKey(0);
 
-    // Propagation of the connected pixels.
-
-    cv::Point lastSeedPoint (0,0);
-    
-    // 0 is taken for the background.
-    int nextLabel = 1;
-    
-    std::unordered_map<int,cv::Vec3b> labelColorMap;
-    labelColorMap[-1] = cv::Vec3b(0,0,0);
-    labelColorMap[0] = bgColor;
-
-    while (true)
-    {
-        cv::Point nextSeedPoint (-1, -1);
-        {
-            bool found = false;
-            // Find the next seed point
-            for (int r = lastSeedPoint.y; !found && r < im.rows; ++r)
-            for (int c = lastSeedPoint.x; !found && c < im.cols; ++c)
-            {
-                if (labels(r,c) == -1)
-                {
-                    nextSeedPoint = cv::Point(c,r);
-                    found = true;
-                }
-            }
-        }
-
-        fprintf(stderr, "nextSeedPoint = %d %d\n", nextSeedPoint.x, nextSeedPoint.y);
-        
-        // No more seedpoints
-        if (nextSeedPoint.x < 0)
-            break;
-
-        // Bookkeeping before we forget.
-        lastSeedPoint = nextSeedPoint;
-
-        const int currLabel = nextLabel;
-        ++nextLabel;
-        labelColorMap[currLabel] = cv::Vec3b(rand()%255, rand()%255, rand()%255);
-
-        std::deque<cv::Point> pointsToProcess;
-        pointsToProcess.push_back(nextSeedPoint);        
-
-        while (!pointsToProcess.empty())
-        {
-            const cv::Point currP = pointsToProcess.front();
-            pointsToProcess.pop_front();
-
-            const int r = currP.y;
-            const int c = currP.x;
-            const cv::Vec3b currRgb = im(r,c);
-            
-            labels(r, c) = currLabel;
-
-            uint8_t connectedBits = connectivityBitmask(r,c);
-
-            for (const auto& neighb : neighbors3x3)
-            {
-                const int otherR = r + neighb.dr;
-                const int otherC = c + neighb.dc;
-
-                // Already labelled?
-                if (labels(otherR, otherC) != -1)
-                    continue;
-                
-                if (connectedBits & neighb.bitmask)
-                {
-                    labels(otherR, otherC) = currLabel;
-                    pointsToProcess.push_back(cv::Point(otherC, otherR));
-                }
-            }
-        }
-    }
-
-    cv::Mat3b labelsAsColors (labels.rows, labels.cols);
-    for_all_rc(labelsAsColors)
-    {
-        labelsAsColors(r,c) = labelColorMap[labels(r,c)];
-    }
-    
-    imshow("labels", labelsAsColors);
-    cv::waitKey();
-    
     return 0;
 }
