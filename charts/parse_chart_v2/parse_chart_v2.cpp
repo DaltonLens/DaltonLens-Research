@@ -258,7 +258,7 @@ int main (int argc, char* argv[])
     MedianCut quantizer;
     std::vector<cv::Vec3b> palette;
     cv::Mat1b indexed;
-    const int numColors = 16; // power of 2
+    const int numColors = 64;
     quantizer.apply (im, numColors, indexed, palette);
     cv::Mat3b indexedAsRgb = indexedToRgb(indexed, palette);
 

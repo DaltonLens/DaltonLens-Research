@@ -2,6 +2,8 @@
 
 #include "dl_opencv.h"
 
+#include <deque>
+
 // 256 colors max.
 
 inline int maxIndex(cv::Vec3i v) 
@@ -14,15 +16,16 @@ inline int maxIndex(cv::Vec3i v)
 class MedianCut
 {
 public:
-    void apply(const cv::Mat3b &im,
+    void apply(const cv::Mat3b &im_rgb,
                int maxColors,
                cv::Mat1b &indexed,
-               std::vector<cv::Vec3b> &palette)
+               std::vector<cv::Vec3b> &palette_rgb)
     {
         assert (maxColors <= 256);
 
-        palette.clear();
-
+        cv::Mat3b im;
+        cv::cvtColor(im_rgb, im, cv::COLOR_BGR2Lab);
+        
         Bucket firstBucket;
         firstBucket.pixels.resize (im.rows*im.cols);
         for_all_rc (im)
@@ -32,43 +35,66 @@ public:
 
         computeRgbRanges (firstBucket);
         
-        std::vector<Bucket> buckets;
-        buckets.push_back (firstBucket);
+        std::priority_queue<Bucket,
+                            std::vector<Bucket>,
+                            CompareBucketByWeightedRange> bucketQueue;
+        bucketQueue.push (firstBucket);
 
         // We'll keep the frozen buckets separately to avoid splitting them again and again
-        // and leave room for more splits. We don't know in advance whether all the buckets
-        // will get split since some might have a zero-range.
-        std::set<Bucket> uniformBuckets;
-        while ((uniformBuckets.size() + buckets.size()) <= maxColors)
+        // and leave room for more splits.
+        std::set<Bucket> finalizedBuckets;
+        while (!bucketQueue.empty() && (finalizedBuckets.size() + bucketQueue.size()) < maxColors-1)
         {
-            buckets = splitBuckets(buckets, uniformBuckets);
+            Bucket worstBucket = bucketQueue.top();
+            bucketQueue.pop();
+            
+            fprintf (stderr, "Queue: popping value with range = %d\n", worstBucket.maxRange());
+            
+            Bucket leftBucket, rightBucket;
+            splitBucket (worstBucket, leftBucket, rightBucket);
+            
+            auto enqueueBucket = [&](const Bucket& bucket)
+            {
+                bool isFinal = bucket.isUniform() || bucket.maxRange() < 5;
+                if (isFinal)
+                    finalizedBuckets.insert(bucket);
+                else
+                    bucketQueue.push(bucket);
+            };
+            
+            if (rightBucket.pixels.empty())
+            {
+                finalizedBuckets.insert(leftBucket);
+            }
+            else
+            {
+                enqueueBucket (leftBucket);
+                enqueueBucket (rightBucket);
+            }
         }
-        
-        // Merge back the uniform guys. Put them first to make sure we don't kill them after
-        // if we added too many colors.
-        buckets.insert(buckets.begin(), uniformBuckets.begin(), uniformBuckets.end());
-        
-        // Remove the most recent splits if we went too far.
-//        while (buckets.size() > maxColors)
-//            buckets.pop_back();
-        
+              
+        while (!bucketQueue.empty())
+        {
+            finalizedBuckets.insert(bucketQueue.top());
+            bucketQueue.pop();
+        }
+                
         std::set<cv::Vec3b> uniqueColors;
 
-        for (int i = 0; i < buckets.size(); ++i)
+        for (const auto& bucket : finalizedBuckets)
         {
-            fprintf (stderr, "[%d] range = %d %d %d (%d pixels)\n",
-                     i,
-                     buckets[i].rgbRanges[0],
-                     buckets[i].rgbRanges[1],
-                     buckets[i].rgbRanges[2],
-                     (int)buckets[i].pixels.size());
+            fprintf (stderr, "[Bucket] range = %d %d %d (%d pixels)\n",
+                     bucket.rgbRanges[0],
+                     bucket.rgbRanges[1],
+                     bucket.rgbRanges[2],
+                     (int)bucket.pixels.size());
             
             cv::Vec3f cumulatedRgb (0,0,0);
-            for (const auto& rgbAndIndex : buckets[i].pixels)
+            for (const auto& rgbAndIndex : bucket.pixels)
             {
                 cumulatedRgb += cv::Vec3f(rgbAndIndex.first[0], rgbAndIndex.first[1], rgbAndIndex.first[2]);
             }
-            cumulatedRgb *= 1.0f/buckets[i].pixels.size();
+            cumulatedRgb *= 1.0f/bucket.pixels.size();
             
             cv::Vec3b newColor;
             for (int k = 0; k < 3; ++k)
@@ -79,18 +105,21 @@ public:
             uniqueColors.insert(newColor);
         }
         
+        std::vector<cv::Vec3b> palette;
         palette.clear();
         palette.insert(palette.end(), uniqueColors.begin(), uniqueColors.end());
         indexed.create(im.rows, im.cols);
         
+        std::map<int, int> errorHistogram;
+        
         for_all_rc (im)
         {
             cv::Vec3i rgb = im(r,c);
-            float min_d = FLT_MAX;
+            float min_d = std::numeric_limits<float>::max();
             int best_i = -1;
             for (int i = 0; i < palette.size(); ++i)
             {
-                float d = cv::norm((cv::Vec3i)palette[i] - rgb);
+                float d = cv::norm((cv::Vec3i)palette[i] - rgb, cv::NORM_L1);
                 if (d < min_d)
                 {
                     min_d = d;
@@ -98,6 +127,27 @@ public:
                 }
             }
             indexed(r,c) = best_i;
+            errorHistogram[min_d] += 1;
+            
+            //            if (min_d > 5)
+            //            {
+            //                fprintf (stderr, "high dist [%d %d %d] <-> [%d %d %d] (d=%f)\n",
+            //                         rgb[0],
+            //                         rgb[1],
+            //                         rgb[2],
+            //                         palette[best_i][0],
+            //                         palette[best_i][1],
+            //                         palette[best_i][2],
+            //                         min_d);
+            //            }
+        }
+        
+        palette_rgb.clear();
+        cv::cvtColor (palette, palette_rgb, cv::COLOR_Lab2BGR);
+        
+        for (const auto& it : errorHistogram)
+        {
+            fprintf (stderr, "%d -> %d\n", it.first, it.second);
         }
     }
 
@@ -109,6 +159,11 @@ private:
         cv::Vec3i rgbRanges = cv::Vec3i(-1,-1,-1);
         cv::Vec3i rgbMin = cv::Vec3i(-1,-1,-1);
         cv::Vec3i rgbMax = cv::Vec3i(-1,-1,-1);
+        
+        int maxRange() const
+        {
+            return std::max(std::max(rgbRanges[0], rgbRanges[1]), rgbRanges[2]);
+        }
         
         bool isUniform() const
         {
@@ -127,69 +182,81 @@ private:
             return rgbMax < rhs.rgbMax;
         }
     };
+    
+    struct CompareBucketByWeightedRange
+    {
+        bool operator()(const Bucket& lhs, const Bucket& rhs) const
+        {
+            return lhs.maxRange()*sqrt(lhs.pixels.size()) < rhs.maxRange()*sqrt(rhs.pixels.size());
+        }
+    };
 
 private:
-    std::vector<Bucket> splitBuckets (std::vector<Bucket>& inputBuckets,
-                                      std::set<Bucket>& uniformBuckets) const
+    void splitBucket (Bucket& bucket,
+                      Bucket& lhsBucket,
+                      Bucket& rhsBucket) const
     {
-        std::vector<Bucket> outputBuckets;
+        fprintf (stderr, "rgb ranges %d %d %d\n",
+                 bucket.rgbRanges[0],
+                 bucket.rgbRanges[1],
+                 bucket.rgbRanges[2]);
+        
+        int maxRangeChannel = maxIndex(bucket.rgbRanges);
+        
+        sortIndicesByChannel(bucket.pixels, maxRangeChannel);
 
-        for (auto& bucket : inputBuckets)
+        fprintf (stderr, "first pixel = %d %d %d\n",
+                 bucket.pixels.front().first[0],
+                 bucket.pixels.front().first[1],
+                 bucket.pixels.front().first[2]);
+        
+        fprintf (stderr, "last pixel = %d %d %d\n",
+                 bucket.pixels.back().first[0],
+                 bucket.pixels.back().first[1],
+                 bucket.pixels.back().first[2]);
+        
+        int medianIndex = bucket.pixels.size() / 2;
+        cv::Vec3b lastValueOfFirstSet = bucket.pixels[medianIndex-1].first;
+        while (medianIndex < bucket.pixels.size()
+               && bucket.pixels[medianIndex].first == lastValueOfFirstSet)
         {
-            fprintf (stderr, "rgb ranges %d %d %d\n",
-                     bucket.rgbRanges[0],
-                     bucket.rgbRanges[1],
-                     bucket.rgbRanges[2]);
-            
-            int maxRangeChannel = maxIndex(bucket.rgbRanges);
-                        
-            sortIndicesByChannel(bucket.pixels, maxRangeChannel);
-
-            fprintf (stderr, "first pixel = %d %d %d\n",
-                     bucket.pixels.front().first[0],
-                     bucket.pixels.front().first[1],
-                     bucket.pixels.front().first[2]);
-            
-            fprintf (stderr, "last pixel = %d %d %d\n",
-                     bucket.pixels.back().first[0],
-                     bucket.pixels.back().first[1],
-                     bucket.pixels.back().first[2]);
-            
-            Bucket lhsBucket, rhsBucket;
-            int medianIndex = bucket.pixels.size() / 2;
-            
+            ++medianIndex;
+        }
+                
+        lhsBucket.pixels.resize(medianIndex);
+        std::copy(bucket.pixels.begin(), bucket.pixels.begin() + medianIndex, lhsBucket.pixels.begin());
+        computeRgbRanges (lhsBucket);
+        
+        if (medianIndex < bucket.pixels.size())
+        {
             fprintf (stderr, "median pixel = %d %d %d\n",
                      bucket.pixels[medianIndex].first[0],
                      bucket.pixels[medianIndex].first[1],
                      bucket.pixels[medianIndex].first[2]);
             
-            lhsBucket.pixels.resize(medianIndex);
             rhsBucket.pixels.resize(bucket.pixels.size() - medianIndex);
-            std::copy(bucket.pixels.begin(), bucket.pixels.begin() + medianIndex, lhsBucket.pixels.begin());
             std::copy(bucket.pixels.begin() + medianIndex, bucket.pixels.end(), rhsBucket.pixels.begin());
-
-            computeRgbRanges (lhsBucket);
             computeRgbRanges (rhsBucket);
-            
-            if (lhsBucket.isUniform())
-                uniformBuckets.insert (lhsBucket);
-            else
-                outputBuckets.push_back (lhsBucket);
-            
-            if (rhsBucket.isUniform())
-                uniformBuckets.insert (rhsBucket);
-            else
-                outputBuckets.push_back (rhsBucket);
         }
-
-        return outputBuckets;
     }
     
-    template <unsigned k>
+    template <unsigned k1, unsigned k2, unsigned k3>
     void sortIndicesByChannel (std::vector<RgbAndIndex>& pixels) const
     {
         std::sort (pixels.begin(), pixels.end(), [](const RgbAndIndex& lhs, const RgbAndIndex& rhs) {
-                    return lhs.first[k] < rhs.first[k];
+            if (lhs.first[k1] < rhs.first[k1])
+                return true;
+            
+            if (lhs.first[k1] > rhs.first[k1])
+                return false;
+            
+            if (lhs.first[k2] < rhs.first[k2])
+                return true;
+            
+            if (lhs.first[k2] > rhs.first[k2])
+                return false;
+            
+            return lhs.first[k3] < rhs.first[k3];
         });
     }
 
@@ -197,9 +264,9 @@ private:
     {
         switch (channel)
         {
-            case 0: sortIndicesByChannel<0>(pixels); break;
-            case 1: sortIndicesByChannel<1>(pixels); break;
-            case 2: sortIndicesByChannel<2>(pixels); break;
+            case 0: sortIndicesByChannel<0,1,2>(pixels); break;
+            case 1: sortIndicesByChannel<1,0,2>(pixels); break;
+            case 2: sortIndicesByChannel<2,0,1>(pixels); break;
             default: assert(false); break;
         }
     }
