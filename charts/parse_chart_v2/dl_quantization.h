@@ -1,8 +1,8 @@
 #pragma once
 
-#include "dl_opencv.h"
-
 #include <deque>
+
+#include <glfw_opencv/imgui_cvlog_gl_opencv.h>
 
 // 256 colors max.
 
@@ -17,6 +17,7 @@ class MedianCut
 {
 public:
     void apply(const cv::Mat3b &im_rgb,
+               const cv::Mat1b& mask,
                int maxColors,
                cv::Mat1b &indexed,
                std::vector<cv::Vec3b> &palette_rgb)
@@ -30,10 +31,12 @@ public:
         firstBucket.pixels.resize (im.rows*im.cols);
         for_all_rc (im)
         {
-            firstBucket.pixels[r*im.cols+c] = std::make_pair(im(r,c), r*im.cols+c);
+            // Was playing with different weights, ended up with just 1.0.
+            if (mask(r,c))
+                firstBucket.pixels[r*im.cols+c] = RgbAndIndexAndWeight { im(r,c), r*im.cols+c, 1.0f };
         }
 
-        computeRgbRanges (firstBucket);
+        computeRgbRangesAndWeights (firstBucket);
         
         std::priority_queue<Bucket,
                             std::vector<Bucket>,
@@ -92,7 +95,7 @@ public:
             cv::Vec3f cumulatedRgb (0,0,0);
             for (const auto& rgbAndIndex : bucket.pixels)
             {
-                cumulatedRgb += cv::Vec3f(rgbAndIndex.first[0], rgbAndIndex.first[1], rgbAndIndex.first[2]);
+                cumulatedRgb += cv::Vec3f(rgbAndIndex.rgb[0], rgbAndIndex.rgb[1], rgbAndIndex.rgb[2]);
             }
             cumulatedRgb *= 1.0f/bucket.pixels.size();
             
@@ -152,10 +155,17 @@ public:
     }
 
 private:
-    using RgbAndIndex = std::pair<cv::Vec3b, int>;
+    struct RgbAndIndexAndWeight
+    {
+        cv::Vec3b rgb;
+        int index;
+        float weight;
+    };
     struct Bucket
     {
-        std::vector<RgbAndIndex> pixels;
+        std::vector<RgbAndIndexAndWeight> pixels;
+        double cumulatedGradientWeight = NAN;
+        
         cv::Vec3i rgbRanges = cv::Vec3i(-1,-1,-1);
         cv::Vec3i rgbMin = cv::Vec3i(-1,-1,-1);
         cv::Vec3i rgbMax = cv::Vec3i(-1,-1,-1);
@@ -187,7 +197,8 @@ private:
     {
         bool operator()(const Bucket& lhs, const Bucket& rhs) const
         {
-            return lhs.maxRange()*sqrt(lhs.pixels.size()) < rhs.maxRange()*sqrt(rhs.pixels.size());
+            // return lhs.maxRange()*sqrt(lhs.pixels.size()) < rhs.maxRange()*sqrt(rhs.pixels.size());
+            return lhs.maxRange()*sqrt(lhs.cumulatedGradientWeight) < rhs.maxRange()*sqrt(rhs.cumulatedGradientWeight);
         }
     };
 
@@ -206,61 +217,61 @@ private:
         sortIndicesByChannel(bucket.pixels, maxRangeChannel);
 
         fprintf (stderr, "first pixel = %d %d %d\n",
-                 bucket.pixels.front().first[0],
-                 bucket.pixels.front().first[1],
-                 bucket.pixels.front().first[2]);
+                 bucket.pixels.front().rgb[0],
+                 bucket.pixels.front().rgb[1],
+                 bucket.pixels.front().rgb[2]);
         
         fprintf (stderr, "last pixel = %d %d %d\n",
-                 bucket.pixels.back().first[0],
-                 bucket.pixels.back().first[1],
-                 bucket.pixels.back().first[2]);
+                 bucket.pixels.back().rgb[0],
+                 bucket.pixels.back().rgb[1],
+                 bucket.pixels.back().rgb[2]);
         
         int medianIndex = bucket.pixels.size() / 2;
-        cv::Vec3b lastValueOfFirstSet = bucket.pixels[medianIndex-1].first;
+        cv::Vec3b lastValueOfFirstSet = bucket.pixels[medianIndex-1].rgb;
         while (medianIndex < bucket.pixels.size()
-               && bucket.pixels[medianIndex].first == lastValueOfFirstSet)
+               && bucket.pixels[medianIndex].rgb == lastValueOfFirstSet)
         {
             ++medianIndex;
         }
                 
         lhsBucket.pixels.resize(medianIndex);
         std::copy(bucket.pixels.begin(), bucket.pixels.begin() + medianIndex, lhsBucket.pixels.begin());
-        computeRgbRanges (lhsBucket);
+        computeRgbRangesAndWeights (lhsBucket);
         
         if (medianIndex < bucket.pixels.size())
         {
             fprintf (stderr, "median pixel = %d %d %d\n",
-                     bucket.pixels[medianIndex].first[0],
-                     bucket.pixels[medianIndex].first[1],
-                     bucket.pixels[medianIndex].first[2]);
+                     bucket.pixels[medianIndex].rgb[0],
+                     bucket.pixels[medianIndex].rgb[1],
+                     bucket.pixels[medianIndex].rgb[2]);
             
             rhsBucket.pixels.resize(bucket.pixels.size() - medianIndex);
             std::copy(bucket.pixels.begin() + medianIndex, bucket.pixels.end(), rhsBucket.pixels.begin());
-            computeRgbRanges (rhsBucket);
+            computeRgbRangesAndWeights (rhsBucket);
         }
     }
     
     template <unsigned k1, unsigned k2, unsigned k3>
-    void sortIndicesByChannel (std::vector<RgbAndIndex>& pixels) const
+    void sortIndicesByChannel (std::vector<RgbAndIndexAndWeight>& pixels) const
     {
-        std::sort (pixels.begin(), pixels.end(), [](const RgbAndIndex& lhs, const RgbAndIndex& rhs) {
-            if (lhs.first[k1] < rhs.first[k1])
+        std::sort (pixels.begin(), pixels.end(), [](const RgbAndIndexAndWeight& lhs, const RgbAndIndexAndWeight& rhs) {
+            if (lhs.rgb[k1] < rhs.rgb[k1])
                 return true;
             
-            if (lhs.first[k1] > rhs.first[k1])
+            if (lhs.rgb[k1] > rhs.rgb[k1])
                 return false;
             
-            if (lhs.first[k2] < rhs.first[k2])
+            if (lhs.rgb[k2] < rhs.rgb[k2])
                 return true;
             
-            if (lhs.first[k2] > rhs.first[k2])
+            if (lhs.rgb[k2] > rhs.rgb[k2])
                 return false;
             
-            return lhs.first[k3] < rhs.first[k3];
+            return lhs.rgb[k3] < rhs.rgb[k3];
         });
     }
 
-    void sortIndicesByChannel (std::vector<RgbAndIndex>& pixels, int channel) const
+    void sortIndicesByChannel (std::vector<RgbAndIndexAndWeight>& pixels, int channel) const
     {
         switch (channel)
         {
@@ -271,16 +282,19 @@ private:
         }
     }
 
-    void computeRgbRanges(Bucket& bucket) const
+    void computeRgbRangesAndWeights(Bucket& bucket) const
     {
         cv::Vec3i rgbMin (255,255,255);
         cv::Vec3i rgbMax (0,0,0);
+        bucket.cumulatedGradientWeight = 0.;
         for (const auto& rgbAndIndex : bucket.pixels)
         {
+            bucket.cumulatedGradientWeight += rgbAndIndex.weight;
+            
             for (int k = 0; k < 3; ++k)
             {
-                rgbMin[k] = std::min(rgbMin[k], (int)rgbAndIndex.first[k]);
-                rgbMax[k] = std::max(rgbMax[k], (int)rgbAndIndex.first[k]);
+                rgbMin[k] = std::min(rgbMin[k], (int)rgbAndIndex.rgb[k]);
+                rgbMax[k] = std::max(rgbMax[k], (int)rgbAndIndex.rgb[k]);
             }
         }
 

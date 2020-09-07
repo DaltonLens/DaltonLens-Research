@@ -15,12 +15,27 @@ Optimize via alpha-expansion.
 
 #include "dl_opencv.h"
 #include "dl_quantization.h"
+#include "Utils.h"
+
+#include <imgui_cvlog.h>
+#include <glfw_opencv/imgui_cvlog_gl_opencv.h>
+
+#include <opengm/graphicalmodel/graphicalmodel.hxx>
+#include <opengm/graphicalmodel/space/simplediscretespace.hxx>
+#include <opengm/functions/potts.hxx>
+#include <opengm/operations/adder.hxx>
+#include <opengm/inference/messagepassing/messagepassing.hxx>
+#include <opengm/inference/gibbs.hxx>
+#include <opengm/inference/icm.hxx>
 
 #include <unordered_map>
 #include <utility>
 #include <cstdio>
+#include <thread>
+#include <fstream>
 
 using namespace cv;
+using namespace opengm;
 
 inline short rgbDist(cv::Vec3b lhs, cv::Vec3b rhs)
 {
@@ -124,7 +139,7 @@ void setMouseAction(const std::string& winName, const MouseAction& action)
                          }, (void*)&action);
 }
 
-int main (int argc, char* argv[])
+int runProcessing (int argc, char** argv)
 {
     if (false)
     {
@@ -148,45 +163,41 @@ int main (int argc, char* argv[])
         return 0;
     }
     
-    if (argc != 2)
-    {
-        std::cerr << "Usage: parse_chart_v2 input_image" << std::endl;
-        return 1;
-    }
-
+    assert (std::ifstream (argv[1]).good());
+    
     cv::Mat3b im = imread(argv[1]);
     assert (im.data);
 
-    cv::imshow("im", im);
+    ImGui::CVLog::UpdateImage("im", im);
     
-    {
-        static MouseAction im_onMouse = [im]( int event, int x, int y, int ) {
-            if (event != EVENT_LBUTTONDOWN)
-                return;
-            
-            auto bgr = im(y,x);
-            fprintf (stderr, "[%d %d] -> [%d %d %d]", x, y, bgr[2], bgr[1], bgr[0]);
-            
-            cv::Vec3b bgColor (135, 27, 107);
-            
-            for (int dr = -1; dr <= 1; ++dr)
-            for (int dc = -1; dc <= 1; ++dc)
-            {
-                auto neighb = im(y+dr, x+dc);
-                
-                int dist; float alpha1, alpha2;
-                std::tie(dist, alpha1, alpha2) = alphaAwareDist(bgr,
-                                                                neighb,
-                                                                bgColor);
-                
-                fprintf (stderr, "\t[%d %d] -> %d (%.2f %.2f)\n",
-                         dr, dc,
-                         dist, alpha1, alpha2);
-            }
-        };
-        setMouseAction( "im", im_onMouse );
-        cv::waitKey(0);
-    }
+//    {
+//        static MouseAction im_onMouse = [im]( int event, int x, int y, int ) {
+//            if (event != EVENT_LBUTTONDOWN)
+//                return;
+//
+//            auto bgr = im(y,x);
+//            fprintf (stderr, "[%d %d] -> [%d %d %d]", x, y, bgr[2], bgr[1], bgr[0]);
+//            
+//            cv::Vec3b bgColor (135, 27, 107);
+//
+//            for (int dr = -1; dr <= 1; ++dr)
+//            for (int dc = -1; dc <= 1; ++dc)
+//            {
+//                auto neighb = im(y+dr, x+dc);
+//
+//                int dist; float alpha1, alpha2;
+//                std::tie(dist, alpha1, alpha2) = alphaAwareDist(bgr,
+//                                                                neighb,
+//                                                                bgColor);
+//
+//                fprintf (stderr, "\t[%d %d] -> %d (%.2f %.2f)\n",
+//                         dr, dc,
+//                         dist, alpha1, alpha2);
+//            }
+//        };
+//        setMouseAction( "im", im_onMouse );
+//        cv::waitKey(0);
+//    }
 
     cv::Mat3s gradientMagnitude;
     cv::Sobel(im, gradientMagnitude, CV_16S, 1, 1);
@@ -205,10 +216,8 @@ int main (int argc, char* argv[])
     cv::Mat1b erodedLowGradPixels;
     cv::erode (lowGradPixels, erodedLowGradPixels, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(5,5)));
 
-    cv::imshow("lowGradPixels", lowGradPixels);
-    cv::imshow("erodedLowGradPixels", erodedLowGradPixels);
-
-    cv::waitKey(1);
+    ImGui::CVLog::UpdateImage("lowGradPixels", lowGradPixels);
+    ImGui::CVLog::UpdateImage("erodedLowGradPixels", erodedLowGradPixels);
 
     // FIXME: assuming a perfect and constant background for now.
     // We should make the bins larger and then take the mean of the
@@ -230,22 +239,34 @@ int main (int argc, char* argv[])
     
     // Assuming a constant bg color for now
     cv::Vec3b bgColor = max_it->first;
-    cv::Mat3b bgColorIm (im.cols, im.rows);
+    cv::Mat3b bgColorIm (im.rows, im.cols);
     bgColorIm = bgColor;
         
-    cv::imshow("bgColorIm", bgColorIm);
+    ImGui::CVLog::UpdateImage("bgColorIm", bgColorIm);
 
-    cv::Mat1b bgMask (im.cols, im.rows);
+    cv::Mat1b bgMask (im.rows, im.cols);
     bgMask = 0;
     for_all_rc (im)
     {
         if (rgbDist(bgColorIm(r,c), im(r,c)) < 10)
           bgMask(r,c) = 255;  
     }
+    
+    // Ignore gray pixels as color-blind people see them properly.
+    cv::Mat1b fgMask (im.rows, im.cols);
+    for_all_rc (im)
+    {
+        const int drg = std::abs(im(r,c)[0] - im(r,c)[1]);
+        const int drb = std::abs(im(r,c)[0] - im(r,c)[2]);
+        const int dgb = std::abs(im(r,c)[1] - im(r,c)[2]);
+        bool isColor = std::max(drg, std::max(drb, dgb)) > 10;
+        fgMask(r,c) = isColor ? 255 : 0;
+    }
 
-    cv::imshow("bgMask", bgMask);
+    ImGui::CVLog::UpdateImage("bgMask", bgMask);
+    ImGui::CVLog::UpdateImage("fgMask", fgMask);
 
-    cv::Mat1f alphaImage (im.cols, im.rows);
+    cv::Mat1f alphaImage (im.rows, im.cols);
     alphaImage = NAN;
 
     // Assume that pixels with low-grad have their true color.
@@ -258,17 +279,145 @@ int main (int argc, char* argv[])
     MedianCut quantizer;
     std::vector<cv::Vec3b> palette;
     cv::Mat1b indexed;
-    const int numColors = 64;
-    quantizer.apply (im, numColors, indexed, palette);
+    const int numColors = 16;
+    quantizer.apply (im, fgMask, numColors, indexed, palette);
+    
     cv::Mat3b indexedAsRgb = indexedToRgb(indexed, palette);
+    for_all_rc(indexedAsRgb)
+    {
+        if (!fgMask(r,c))
+            indexedAsRgb(r,c) = im(r,c);
+    }
 
     fprintf (stderr, "Palette: \n");
     for (const auto& rgb : palette)
         fprintf (stderr, "\t[%d %d %d]\n", rgb[0], rgb[1], rgb[2]);
     
-    cv::imshow("indexed", indexed);
-    cv::imshow("quantized", indexedAsRgb);
-    cv::waitKey(0);
+    ImGui::CVLog::UpdateImage("indexed", indexed);
+    ImGui::CVLog::UpdateImage("quantized", indexedAsRgb);
+
+    // model parameters (global variables are used only in example code)
+    const size_t nx = im.cols; // width of the grid
+    const size_t ny = im.rows; // height of the grid
+    const size_t numberOfLabels = numColors + 1; // 0 is a special label for pixels to skip touch.
+    double lambda = 0.1; // coupling strength of the Potts model
+
+    // this function maps a node (x, y) in the grid to a unique variable index
+    auto variableIndex = [nx](const size_t x, const size_t y) {
+        return x + nx * y; 
+    };
+
+    // construct a label space with
+    // - nx * ny variables
+    // - each having numberOfLabels many labels
+    typedef SimpleDiscreteSpace<size_t, size_t> Space;
+    Space space(nx * ny, numberOfLabels);
+
+    // construct a graphical model with
+    // - addition as the operation (template parameter Adder)
+    // - support for Potts functions (template parameter PottsFunction<double>)
+    typedef GraphicalModel<double, Adder, OPENGM_TYPELIST_2(ExplicitFunction<double>, PottsFunction<double>), Space> Model;
+    Model gm(space);
+
+    // for each node (x, y) in the grid, i.e. for each variable
+    // variableIndex(x, y) of the model, add one 1st order functions
+    // and one 1st order factor
+    for (size_t y = 0; y < ny; ++y)
+    for (size_t x = 0; x < nx; ++x)
+    {
+        // function
+        const size_t shape[] = {numberOfLabels};
+        ExplicitFunction<double> f(shape, shape + 1);
+        for (size_t s = 0; s < numberOfLabels; ++s)
+        {
+            f(s) = (1.0 - lambda) * rand() / RAND_MAX;
+        }
+        Model::FunctionIdentifier fid = gm.addFunction(f);
+
+        // factor
+        size_t variableIndices[] = {variableIndex(x, y)};
+        gm.addFactor(fid, variableIndices, variableIndices + 1);
+    }
+    
+    // add one (!) 2nd order Potts function
+    PottsFunction<double> f(numberOfLabels, numberOfLabels, 0.0, lambda);
+    Model::FunctionIdentifier fid = gm.addFunction(f);
+    
+    // for each pair of nodes (x1, y1), (x2, y2) which are adjacent on the grid,
+    // add one factor that connects the corresponding variable indices and
+    // refers to the Potts function
+    for(size_t y = 0; y < ny; ++y)
+    for(size_t x = 0; x < nx; ++x)
+    {
+        if (x + 1 < nx)
+        {
+            // (x, y) -- (x + 1, y)
+            size_t variableIndices[] = {variableIndex(x, y), variableIndex(x + 1, y)};
+            std::sort(variableIndices, variableIndices + 2);
+            gm.addFactor(fid, variableIndices, variableIndices + 2);
+        }
+        if (y + 1 < ny)
+        {
+            // (x, y) -- (x, y + 1)
+            size_t variableIndices[] = {variableIndex(x, y), variableIndex(x, y + 1)};
+            std::sort(variableIndices, variableIndices + 2);
+            gm.addFactor(fid, variableIndices, variableIndices + 2);
+        }
+    }
+    
+    // set up the optimizer (loopy belief propagation)
+    typedef BeliefPropagationUpdateRules<Model, opengm::Minimizer> UpdateRules;
+    typedef MessagePassing<Model, opengm::Minimizer, UpdateRules, opengm::MaxDistance> BeliefPropagation;
+    const size_t maxNumberOfIterations = 1;
+    const double convergenceBound = 1e-7;
+    const double damping = 0.5;
+    BeliefPropagation::Parameter parameter(maxNumberOfIterations, convergenceBound, damping);
+    BeliefPropagation bp(gm, parameter);
+    
+    // optimize (approximately)
+    {
+        dl::ScopeTimer _ ("Inference");
+        BeliefPropagation::VerboseVisitorType visitor;
+        bp.infer(visitor);
+    }
+
+    // obtain the (approximate) argmin
+    std::vector<size_t> labeling(nx * ny);
+    bp.arg(labeling);
+    
+    // output the (approximate) argmin
+    //    {
+    //        size_t varIdx = 0;
+    //        for(size_t y = 0; y < ny; ++y)
+    //        {
+    //            for(size_t x = 0; x < nx; ++x)
+    //            {
+    //                std::cerr << labeling[varIdx] << ' ';
+    //                ++varIdx;
+    //            }
+    //            std::cerr << std::endl;
+    //        }
+    //    }
+
+    return 0;
+}
+
+int main (int argc, char* argv[])
+{
+    if (argc != 2)
+    {
+        std::cerr << "Usage: parse_chart_v2 input_image" << std::endl;
+        return 1;
+    }
+
+    ImGui::CVLog::OpenCVGLWindow window;
+    window.initializeContexts("Parse chart v2", 1980, 1080);
+
+    std::thread processingThread ([&]() { runProcessing(argc, argv); });
+
+    window.run();
+    processingThread.join();
+    window.shutDown();    
 
     return 0;
 }
