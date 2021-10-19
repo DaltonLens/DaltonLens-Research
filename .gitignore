@@ -3,3 +3,5 @@ logs/
 __pycache__/
 .vscode/
 charts/parse_chart_v2/build
+build/
+venv
