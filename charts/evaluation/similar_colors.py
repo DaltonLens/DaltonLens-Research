@@ -1,18 +1,15 @@
-from pathlib import Path
-import json
+from charts.common.utils import *
+from charts.common.dataset import LabeledImage
+
 import cv2
 import numpy as np
 
-import sklearn.metrics
-
+import json
+from pathlib import Path
 from icecream import ic
-
 from abc import ABC, abstractmethod
 
-debug = True
-
-def swap_rb(im):
-    return im[:,:,[2,1,0]]
+debug = False
 
 class SimilarColorFinder(ABC):
     def __init__(self, image_rgb):
@@ -40,8 +37,6 @@ class HSVFinder(SimilarColorFinder):
             ic(target_hsv)
             ic((c,r))
 
-        distance_from_target = np.linalg.norm(self.float_image - target_rgb, axis=-1)
-
         diff = np.abs(self.hsv_image - target_hsv)
         # h is modulo 360º
         diff[:,:,0] = np.minimum(diff[:,:,0], 360.0 - diff[:,:,0])
@@ -59,7 +54,7 @@ class HSVFinder(SimilarColorFinder):
             deltaH_360 = deltaColorThreshold
             deltaS_100 = deltaColorThreshold * 5.0 # tolerates 3x more since the range is [0,100]
             deltaV_255 = deltaColorThreshold * 12.0 # tolerates much more difference than hue.
-            deltaS_100 *= target_hsv[1] * 100.0
+            deltaS_100 *= target_hsv[1]
             deltaS_100 = max(deltaS_100, 1.0)
         else:
             deltaH_360 = deltaColorThreshold
@@ -69,48 +64,53 @@ class HSVFinder(SimilarColorFinder):
         deltaS = deltaS_100 / 100.0
         return np.all(diff < np.array([deltaH_360, deltaS, deltaV_255]), axis=-1)
 
-class LabeledImage:
-    def __init__(self, json_file: Path):
-        self.json_file = json_file
-        with open(json_file, 'r') as f:
-            self.json = json.load(f)
-        print (self.json)
-        self.rendered_file = json_file.with_suffix('.rendered.png')
-        self.labels_file = json_file.with_suffix('.labels.png')
-        self.labels_image = None
+def precision_recall_f1 (estimated_mask, gt_mask):
+    num_gt_true = np.count_nonzero(gt_mask)
+    num_estimated_true = np.count_nonzero(estimated_mask)
+    correct_true = np.count_nonzero(estimated_mask & gt_mask)
+    recall = correct_true / num_gt_true
+    precision = correct_true / num_estimated_true
+    f1_score = 2.0 * precision * recall / (precision + recall)
+    if np.isnan(f1_score):
+        f1_score = 0.0
+    return (precision, recall, f1_score)
 
-    def ensure_images_loaded(self):
-        if self.labels_image is not None:
-            return
+class InteractiveEvaluator:
+    def __init__(self):
+        pass
 
-        self.labels_image = cv2.imread(str(self.labels_file), cv2.IMREAD_GRAYSCALE)
-        if debug:
-            cv2.imshow (winname="label", mat=self.labels_image)
-            cv2.waitKey (0)
-        self.rendered_image_bgr = cv2.imread(str(self.rendered_file), cv2.IMREAD_COLOR)
-        self.rendered_image = swap_rb(self.rendered_image_bgr)
+    def process_image (self, im_bgr: np.ndarray, finder: SimilarColorFinder, labeled_image: LabeledImage = None):
+        def handle_click(event, x, y, flags, param):
+            if event != cv2.EVENT_LBUTTONDOWN:
+                return
+            mask = finder.similar_colors(x, y)
+            cv2.imshow ("estimated", bool_image_to_uint8(mask))
 
-    def mask_for_label(self, label: int):
-        self.ensure_images_loaded()
-        return self.labels_image == label
-        
+            if labeled_image is not None:
+                label = labeled_image.labels_image[y,x]
+                cv2.imshow ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
+            
+        cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        cv2.setMouseCallback("image", handle_click)
+        cv2.imshow ("image", im_bgr)        
+        while cv2.waitKey(0) != ord('q'):
+            pass
 
-def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder):
+def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode = False):
+    # Fixed seed to make sure that we compare all the methods in
+    # a deterministic way.
     from numpy.random import default_rng
-    
-    num_samples = 100
-
-    # Fixed seed to make sure that we compare all the methods in a deterministic
-    # way.
     rng = default_rng(42)
 
+    num_samples = 20
     labels = labeled_image.json['labels']
     labels = labels[1:] # remove the first label, it's the background
     num_samples_per_label = int(num_samples / len(labels))
-    precision_recall_scores = ([], [])
+    precision_recall_f1_scores = ([], [], [])
     wait_for_input = True
     for label_entry in labels:
         label = label_entry['label']
+        label_rgb = np.array(label_entry['rgb_color'])
         mask_for_label = labeled_image.mask_for_label(label)
         rc_with_label = np.nonzero(mask_for_label)
         num_pixels_with_label = rc_with_label[0].size
@@ -120,11 +120,25 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder):
         for coord in coordinates:
             r = rc_with_label[0][coord]
             c = rc_with_label[1][coord]
+
+            if easy_mode:
+                min_diff_rc = (r,c)
+                min_diff = np.linalg.norm(labeled_image.rendered_image[r,c,:] - label_rgb)
+                for dr, dc in  [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
+                    if not in_range(labeled_image.rendered_image, r+dr, c+dc):
+                        continue
+                    diff = np.linalg.norm(labeled_image.rendered_image[r+dr,c+dc,:] - label_rgb)
+                    if (diff < min_diff):
+                        min_diff = diff
+                        min_diff_rc = (r+dr, c+dc)
+                r, c = min_diff_rc
+
             estimated_mask = finder.similar_colors (c,r)
-            precision = sklearn.metrics.precision_score (mask_for_label.flatten(), estimated_mask.flatten())
-            recall = sklearn.metrics.recall_score (mask_for_label.flatten(), estimated_mask.flatten())
-            precision_recall_scores[0].append (precision)
-            precision_recall_scores[1].append (recall)
+
+            precision, recall, f1 = precision_recall_f1 (estimated_mask, mask_for_label)
+            precision_recall_f1_scores[0].append (precision)
+            precision_recall_f1_scores[1].append (recall)
+            precision_recall_f1_scores[2].append (f1)
             if debug:
                 ic (precision)
                 ic (recall)
@@ -134,15 +148,46 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder):
                 else:
                     cv2.waitKey(1)
         
-    average_precision = np.mean(precision_recall_scores[0])
-    average_recall = np.mean(precision_recall_scores[1])
-    print (f"Average of precision scores over {len(precision_recall_scores[0])} samples: {average_precision}")
-    print (f"   Average of recall scores over {len(precision_recall_scores[1])} samples: {average_recall}")
-    return (average_precision, average_recall)
+    average_precision = np.mean(precision_recall_f1_scores[0])
+    average_recall = np.mean(precision_recall_f1_scores[1])
+    average_f1 = np.mean(precision_recall_f1_scores[2])
 
-if __name__ == "__main__":
+    # Show all the values to get a quick overview.
+    print ("(precision, recall, f1) = ", end =" ")
+    for p,r,f1 in zip(*precision_recall_f1_scores):
+        if p > 0.9 and r > 0.4:
+            color_prefix, color_suffix = (TermColors.GREEN, TermColors.END)
+        elif p > 0.8 and r > 0.3:
+            color_prefix, color_suffix = (TermColors.YELLOW, TermColors.END)
+        else:
+            color_prefix, color_suffix = (TermColors.RED, TermColors.END)
+        print (f"{color_prefix}({p:.2f} {r:.2f} {f1:.2f}){color_suffix}", end =" ")
+    print()
+
+    num_good = np.count_nonzero (np.array(precision_recall_f1_scores[2]) >= 0.5)
+    num_samples = len(precision_recall_f1_scores[0])
+    percentage_good = 100.0*num_good/num_samples
+    print (f"Average P,R,F1 over {num_samples} samples {average_precision:.2f}, {average_recall:.2f}, {average_f1:.2f}")
+    print (f"Percentage of great results: {percentage_good:.2f}%")
+    return (percentage_good, average_precision, average_recall, average_f1)
+
+def main_interactive_evaluator():
+    evaluator = InteractiveEvaluator()
+    # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
+    labeled_image = LabeledImage (Path("generated/drawings/img-00000-003.json"))
+    labeled_image.ensure_images_loaded()
+    finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
+    evaluator.process_image (labeled_image.rendered_image_bgr, finder, labeled_image)
+
+def main_batch_evaluation ():
     # im = LabeledImage (Path("generated/drawings/img-00000-000.json"))
     im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
-    evaluate (im, HSVFinder(im.rendered_image, plot_mode=True))
+    evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=False)
 
+def main():
+    # main_interactive_evaluator()
+    main_batch_evaluation ()
+
+if __name__ == "__main__":
+    main ()

@@ -110,6 +110,7 @@ class ImageGenerator:
     def generate_with_random_colors(self):
         colors = []
         bg_color = random_bgr()
+        # bg_color = (255,255,255) # TEMP: white background.
         for i in range(0, num_classes_per_image):
             while True:
                 candidate_bgr = random_bgr()
