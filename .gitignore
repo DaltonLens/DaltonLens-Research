@@ -5,3 +5,6 @@ __pycache__/
 charts/parse_chart_v2/build
 build/
 venv
+charts/pytorch/runs/
+charts/pytorch/.ipynb_checkpoints/
+.eggs/

@@ -186,8 +186,8 @@ def main_batch_evaluation ():
     evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=False)
 
 def main():
-    # main_interactive_evaluator()
-    main_batch_evaluation ()
+    main_interactive_evaluator()
+    # main_batch_evaluation ()
 
 if __name__ == "__main__":
     main ()
