@@ -8,3 +8,4 @@ venv
 charts/pytorch/runs/
 charts/pytorch/.ipynb_checkpoints/
 .eggs/
+charts/pytorch/experiments/
