@@ -38,7 +38,7 @@ class ColorRegressionImageDataset(Dataset):
         self.max_length = max_length
 
         json_files = sorted(img_dir.glob("img-?????-???.json"))
-        self.labeled_images = list(map(LabeledImage, json_files))
+        self.labeled_images = [LabeledImage(f) for f in json_files]
 
     def __len__(self):
         return min(self.max_length, len(self.labeled_images))
