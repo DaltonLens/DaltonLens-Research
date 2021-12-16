@@ -21,8 +21,9 @@ from pathlib import Path
 import sys
 
 from charts.common.utils import swap_rb
+from charts.pytorch.similar_colors import ImagePreprocessor, ColorRegressionImageDataset
 
-class ImagePreprocessor:   
+class Preprocessor:
     def __init__(self, device: torch.device):
         self.device = device
         self.transform = transforms.Compose([
@@ -31,17 +32,23 @@ class ImagePreprocessor:
             transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
         ])
 
+        # No need for normalization, it expects the class index.
+        self.target_transform = transforms.Compose([
+            # transforms.ToTensor(),
+            transforms.Lambda(lambda x: x.to(self.device)),
+        ])
+    
     def denormalize_and_clip_as_tensor (self, im: Tensor) -> Tensor:
         return torch.clip(im * 0.5 + 0.5, 0.0, 1.0)
 
     def denormalize_and_clip_as_numpy (self, im: Tensor) -> np.ndarray:
         return self.denormalize_and_clip_as_tensor(im).permute(1, 2, 0).detach().cpu().numpy()
 
-class ColorRegressionImageDataset(Dataset):
-    def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
+class DrawingSegmentationDataset(Dataset):
+    def __init__(self, img_dir, preprocessor: Preprocessor, max_length=sys.maxsize):
         self.img_dir = img_dir
         self.transform = preprocessor.transform
-        self.target_transform = preprocessor.transform
+        self.target_transform = preprocessor.target_transform
         self.max_length = max_length
 
         json_files = sorted(img_dir.glob("img-?????-???.json"))
@@ -54,7 +61,9 @@ class ColorRegressionImageDataset(Dataset):
         labeled_img = self.labeled_images[idx]
         labeled_img.ensure_images_loaded()
         image = labeled_img.rendered_image
-        labels_image = labeled_img.labels_as_rgb
+        labels_image = labeled_img.labels_image
+        labels_image = np.where(labels_image > 0, 1, 0)
+        labels_image = torch.as_tensor(labels_image, dtype=torch.long)
         labeled_img.release_images()
         if self.transform:
             image = self.transform(image)
@@ -66,7 +75,7 @@ class ColorRegressionImageDataset(Dataset):
     def __repr__(self):
         return f"{len(self)} images, first is {self.labeled_images[0]}, last is {self.labeled_images[-1]}"
 
-class RegressionNet_Unet1(nn.Module):
+class DrawSegmentation_Unet1(nn.Module):
     def __init__(self):
         super().__init__()
         self.downThenUp = nn.Sequential(
@@ -87,7 +96,7 @@ class RegressionNet_Unet1(nn.Module):
             # +3 do to the concatenation.
             nn.Conv2d(16 + 3, 32, 5, padding='same'),
             nn.ReLU(),
-            nn.Conv2d(32, 3, 5, padding='same')
+            nn.Conv2d(32, 2, 5, padding='same')
         )
 
         # # self.conv1.weight.data[...] = 1.0 / (5*5)
@@ -131,7 +140,7 @@ def compute_average_loss (dataset_loader: DataLoader, net: nn.Module, criterion:
             running_loss += loss.item()
     return running_loss / len(dataset_loader)
 
-class Processor:
+class DrawingSegmentor:
     def __init__(self, network_model_pt: Path):
         self.device = torch.device("cpu")
         self.preprocessor = ImagePreprocessor(self.device)
@@ -146,7 +155,7 @@ class Processor:
         return output_im
 
 if __name__ == "__main__":
-    processor = Processor(Path(__file__).parent / "regression_unet_v1.pt")
+    processor = DrawingSegmentor(Path(__file__).parent / "drawing_segmentation_v1.pt")
     im_rgb = swap_rb(cv2.imread(sys.argv[1], cv2.IMREAD_COLOR))
     output_image = processor.process_image (im_rgb)
     cv2.imwrite("output.png", swap_rb(output_image))

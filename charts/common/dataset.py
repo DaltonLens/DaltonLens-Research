@@ -26,6 +26,7 @@ class LabeledImage:
 
     def ensure_images_loaded(self):
         if self.labels_image is not None:
+            assert self.rendered_image is not None
             return
 
         self.labels_image = cv2.imread(str(self.labels_file), cv2.IMREAD_GRAYSCALE)

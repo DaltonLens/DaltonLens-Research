@@ -9,6 +9,8 @@ from pathlib import Path
 from icecream import ic
 from abc import ABC, abstractmethod
 
+import charts.pytorch.similar_colors as torch_similar_colors
+
 debug = False
 
 class SimilarColorFinder(ABC):
@@ -63,6 +65,12 @@ class HSVFinder(SimilarColorFinder):
 
         deltaS = deltaS_100 / 100.0
         return np.all(diff < np.array([deltaH_360, deltaS, deltaV_255]), axis=-1)
+
+class DeepRegressionFinder(HSVFinder):
+    def __init__(self, raw_image_rgb):
+        processor = torch_similar_colors.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unet_v1.pt")
+        filtered_image_rgb = processor.process_image(raw_image_rgb)
+        super().__init__(filtered_image_rgb, plot_mode=False)
 
 def precision_recall_f1 (estimated_mask, gt_mask):
     num_gt_true = np.count_nonzero(gt_mask)
@@ -174,16 +182,21 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
 def main_interactive_evaluator():
     evaluator = InteractiveEvaluator()
     # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
-    labeled_image = LabeledImage (Path("generated/drawings/img-00000-003.json"))
-    labeled_image.ensure_images_loaded()
-    finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
-    evaluator.process_image (labeled_image.rendered_image_bgr, finder, labeled_image)
+    # labeled_image = LabeledImage (Path("generated/drawings-test/img-00000-000.json"))
+    # labeled_image.ensure_images_loaded()
+    # finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
+    labeled_image = None
+    image_bgr = cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR)
+    finder = DeepRegressionFinder(swap_rb(image_bgr))
+    evaluator.process_image (image_bgr, finder, labeled_image)
 
 def main_batch_evaluation ():
-    # im = LabeledImage (Path("generated/drawings/img-00000-000.json"))
-    im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
+    im = LabeledImage (Path("generated/drawings-tests/img-00000-000.json"))
+    # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
-    evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=False)
+    easy_mode = False
+    # evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=easy_mode)
+    evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
 
 def main():
     main_interactive_evaluator()
