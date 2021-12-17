@@ -194,6 +194,7 @@ def main_batch_evaluation ():
     im = LabeledImage (Path("generated/drawings-tests/img-00000-000.json"))
     # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
+    im.compute_labels_as_rgb()
     easy_mode = False
     # evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=easy_mode)
     evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)

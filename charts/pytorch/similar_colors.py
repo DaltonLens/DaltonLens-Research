@@ -53,6 +53,7 @@ class ColorRegressionImageDataset(Dataset):
     def __getitem__(self, idx):
         labeled_img = self.labeled_images[idx]
         labeled_img.ensure_images_loaded()
+        labeled_img.compute_labels_as_rgb()
         image = labeled_img.rendered_image
         labels_image = labeled_img.labels_as_rgb
         labeled_img.release_images()
