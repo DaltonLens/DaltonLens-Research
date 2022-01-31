@@ -10,6 +10,18 @@ import shutil
 
 default_output_dir = Path(__file__).resolve().parent / "experiments"
 
+_already_checked_is_google_colab = None
+
+def is_google_colab():
+    global _already_checked_is_google_colab
+    if _already_checked_is_google_colab is not None:
+        return _already_checked_is_google_colab
+    try:
+        import google.colab
+        _already_checked_is_google_colab = True
+    except:
+        _already_checked_is_google_colab = False
+
 class Experiment:
     def __init__(self, name: str,
                  logs_root_dir: Path = default_output_dir,
