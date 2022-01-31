@@ -51,3 +51,6 @@ class Experiment:
             'epoch': epoch,
         }, self.log_path / f"checkpoint-{epoch:05d}.pt")
 
+
+def num_trainable_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
