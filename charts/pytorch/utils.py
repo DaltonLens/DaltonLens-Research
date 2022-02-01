@@ -25,6 +25,13 @@ def is_google_colab():
     except:
         _already_checked_is_google_colab = False
 
+def stop_google_colab_vm():
+    if is_google_colab():
+        import subprocess
+        subprocess.run(["touch", "/content/stop_colab_vm"])
+        subprocess.run(["sleep", "5"])
+        subprocess.run(["kill", "-9", "-l"])
+
 class Experiment:
     def __init__(self, 
                  name: str,
