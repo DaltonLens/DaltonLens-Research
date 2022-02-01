@@ -24,6 +24,7 @@ def is_google_colab():
         _already_checked_is_google_colab = True
     except:
         _already_checked_is_google_colab = False
+    return _already_checked_is_google_colab
 
 def stop_google_colab_vm():
     if is_google_colab():
