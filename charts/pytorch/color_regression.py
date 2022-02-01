@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from charts.common.dataset import LabeledImage
+import charts.pytorch.segmentation_transforms as segmentation_transforms
 
 import torch
 from torch import Tensor
@@ -27,13 +28,17 @@ from charts.common.utils import swap_rb
 import icecream as ic
 
 class ImagePreprocessor:   
-    def __init__(self, device: torch.device):
+    def __init__(self, device: torch.device, target_size: int = None):
+        Both = segmentation_transforms.ApplyOnBoth
         self.device = device
-        self.transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Lambda(lambda x: x.to(self.device)),
-            transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)),
-        ])
+        transform_list = [
+            Both(transforms.ToTensor()),
+            Both(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+        ]
+        if target_size is not None:
+            transform_list.append(segmentation_transforms.RandomCropWithRegressionLabels(target_size))
+        
+        self.transform = segmentation_transforms.Compose(transform_list)
 
     def denormalize_and_clip_as_tensor (self, im: Tensor) -> Tensor:
         return torch.clip(im * 0.5 + 0.5, 0.0, 1.0)
@@ -45,7 +50,6 @@ class ColorRegressionImageDataset(Dataset):
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
         self.img_dir = img_dir
         self.transform = preprocessor.transform
-        self.target_transform = preprocessor.transform
         self.max_length = max_length
 
         json_files = sorted(img_dir.glob("img-?????-???.json"))
@@ -62,9 +66,7 @@ class ColorRegressionImageDataset(Dataset):
         labels_image = labeled_img.labels_as_rgb
         labeled_img.release_images()
         if self.transform:
-            image = self.transform(image)
-        if self.target_transform:
-            labels_image = self.target_transform(labels_image)
+            image, labels_image = self.transform(image, labels_image)
         assert (image is not None)
         return image, labels_image, repr(self.labeled_images[idx])
 
@@ -189,22 +191,22 @@ class RegressionNet_Unet1(nn.Module):
         encoded_layers = self.encoder(img)
         return self.decoder(img, encoded_layers)
 
-def compute_average_loss (dataset_loader: DataLoader, net: nn.Module, criterion: nn.Module):
+def compute_average_loss (dataset_loader: DataLoader, net: nn.Module, criterion: nn.Module, device: torch.device):
     with torch.no_grad():
         running_loss = 0.0
         for data in dataset_loader:
-            inputs, labels, _ = data
+            inputs, labels = [x.to(device) for x in data[0:2]]
             outputs = net(inputs)
             loss = criterion(outputs, labels)
             running_loss += loss.item()
     return running_loss / len(dataset_loader)
 
-def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.Module):
+def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.Module, device: torch.device):
     with torch.no_grad():
         num_good = 0
         num_pixels = 0
         for data in dataset_loader:
-            inputs, labels, _ = data
+            inputs, labels = [x.to(device) for x in data[0:2]]
             outputs = net(inputs)
             diff = torch.abs(outputs-labels)
             max_diff = torch.max(diff, dim=1)[0]

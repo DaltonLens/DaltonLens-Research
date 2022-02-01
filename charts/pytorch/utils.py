@@ -8,6 +8,9 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 
+import gc
+import inspect
+
 default_output_dir = Path(__file__).resolve().parent / "experiments"
 
 _already_checked_is_google_colab = None
@@ -23,23 +26,31 @@ def is_google_colab():
         _already_checked_is_google_colab = False
 
 class Experiment:
-    def __init__(self, name: str,
+    def __init__(self, 
+                 name: str,
                  logs_root_dir: Path = default_output_dir,
-                 clear_previous_results: bool = False):
+                 clear_previous_results: bool = False,
+                 clear_top_folder=False):
         assert len(name) > 3
-        self.name = str
-        self.log_path = logs_root_dir / name
-        print (f"Will store the experiment data to {self.log_path}")
+        self.root_log_path = logs_root_dir / name        
+        print (f"[XP] storing experiment data to {self.root_log_path}")
         self.clear_previous_results = clear_previous_results
-        self.first_epoch = 0
+        if clear_top_folder:
+            print (f"Warning: removing the top-level {self.root_log_path}")
+            shutil.rmtree (self.root_log_path)
 
-    def prepare (self, net: torch.nn.Module, optimizer: torch.optim.Optimizer, device: torch.device, sample_input: torch.Tensor):
+    def prepare (self, config_name: str, net: torch.nn.Module, optimizer: torch.optim.Optimizer, device: torch.device, sample_input: torch.Tensor):
+        assert len(config_name) > 3
+        self.log_path = self.root_log_path / config_name
         self.net = net
         self.optimizer = optimizer
+        self.first_epoch = 0
+
+        print (f"[XP] storing config data to {self.log_path}")
 
         if self.clear_previous_results and self.log_path.exists():
             print (f"Warning: removing the existing {self.log_path}")
-            shutil.rmtree (self.log_path)            
+            shutil.rmtree (self.log_path)
         self.log_path.mkdir (parents=True, exist_ok=True)
 
         checkpoints = list(sorted(self.log_path.glob("checkpoint-*.pt")))
@@ -55,6 +66,9 @@ class Experiment:
         self.writer = SummaryWriter(log_dir=self.log_path)
         self.writer.add_graph(net, sample_input)
 
+    def finalize(self, hparams, metrics):
+        self.writer.add_hparams(hparams, metrics)
+
     def save_checkpoint (self, epoch):
         # now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         torch.save({
@@ -66,3 +80,55 @@ class Experiment:
 
 def num_trainable_parameters(model):
     return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def clear_gpu_memory():    
+    gc.collect()
+    torch.cuda.empty_cache()
+
+def find_names(obj):
+    frame = inspect.currentframe()
+    for frame in iter(lambda: frame.f_back, None):
+        frame.f_locals
+    obj_names = []
+    for referrer in gc.get_referrers(obj):
+        if isinstance(referrer, dict):
+            for k, v in referrer.items():
+                if v is obj:
+                    obj_names.append(k)
+    return obj_names
+
+def show_gpu_memory_with_names():
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                print(type(obj), obj.size(), find_names(obj))
+        except:
+            pass
+
+def pretty_size(num, suffix=""):
+    for unit in ["", "K", "M", "G", "T", "P", "E", "Z"]:
+        if abs(num) < 1000.0:
+            return f"{num:3.1f}{unit}{suffix}"
+        num /= 1000.0
+    return f"{num:.1f}Yi{suffix}"
+
+def show_gpu_memory():
+    """Prints a list of the Tensors being tracked by the garbage collector."""
+    gpu_only = True
+    total_size = 0
+    for obj in gc.get_objects():
+        try:
+            if torch.is_tensor(obj):
+                if not gpu_only or obj.is_cuda:
+                    print("%s: %s" % (type(obj).__name__, 
+                                          str(obj.size())))
+                    total_size += obj.numel()
+            elif hasattr(obj, "data") and torch.is_tensor(obj.data):
+                if not gpu_only or obj.data.is_cuda:
+                    print("%s → %s: %s" % (type(obj).__name__, 
+                                                   type(obj.data).__name__, 
+                                                   str(obj.data.size())))
+                    total_size += obj.data.numel()
+        except Exception as e:
+            pass
+    print("Total size:", pretty_size(total_size))
