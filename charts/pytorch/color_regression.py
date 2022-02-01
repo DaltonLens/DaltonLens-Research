@@ -33,6 +33,7 @@ class ImagePreprocessor:
         self.device = device
         transform_list = [
             Both(transforms.ToTensor()),
+            # Both(transforms.Lambda(lambda x: x.to(device))),
             Both(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         ]
         if target_size is not None:

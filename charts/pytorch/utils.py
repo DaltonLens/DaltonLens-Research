@@ -43,7 +43,7 @@ class Experiment:
         self.root_log_path = logs_root_dir / name        
         print (f"[XP] storing experiment data to {self.root_log_path}")
         self.clear_previous_results = clear_previous_results
-        if clear_top_folder:
+        if clear_top_folder and self.root_log_path.exists():
             print (f"Warning: removing the top-level {self.root_log_path}")
             shutil.rmtree (self.root_log_path)
 
