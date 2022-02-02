@@ -33,6 +33,16 @@ def stop_google_colab_vm():
         subprocess.run(["sleep", "5"])
         subprocess.run(["kill", "-9", "-l"])
 
+def merge_dicts(*dict_args):
+    """
+    Given any number of dictionaries, shallow copy and merge into a new dict,
+    precedence goes to key-value pairs in latter dictionaries.
+    """
+    result = {}
+    for dictionary in dict_args:
+        result.update(dictionary)
+    return result
+
 class Experiment:
     def __init__(self, 
                  name: str,
@@ -87,7 +97,7 @@ class Experiment:
 
 
 def num_trainable_parameters(model):
-    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+    return pretty_size(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
 def clear_gpu_memory():    
     gc.collect()
