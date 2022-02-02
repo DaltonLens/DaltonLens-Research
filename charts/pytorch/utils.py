@@ -30,6 +30,7 @@ def stop_google_colab_vm():
     if is_google_colab():
         import subprocess
         subprocess.run(["touch", "/content/stop_colab_vm"])
+        subprocess.run(["jupyter", "notebook", "stop", "8888"])
         subprocess.run(["sleep", "5"])
         subprocess.run(["kill", "-9", "-l"])
 
