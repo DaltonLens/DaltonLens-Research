@@ -58,12 +58,20 @@ class Experiment:
             print (f"Warning: removing the top-level {self.root_log_path}")
             shutil.rmtree (self.root_log_path)
 
-    def prepare (self, config_name: str, net: torch.nn.Module, optimizer: torch.optim.Optimizer, device: torch.device, sample_input: torch.Tensor):
+    def prepare(self, 
+                config_name: str,
+                net: torch.nn.Module,
+                optimizer: torch.optim.Optimizer,
+                scheduler: torch.optim.lr_scheduler._LRScheduler,
+                device: torch.device,
+                sample_input: torch.Tensor,
+                default_first_epoch: int = 0):
         assert len(config_name) > 3
         self.log_path = self.root_log_path / config_name
         self.net = net
         self.optimizer = optimizer
-        self.first_epoch = 0
+        self.scheduler = scheduler
+        self.first_epoch = default_first_epoch
 
         print (f"[XP] storing config data to {self.log_path}")
 
@@ -77,8 +85,10 @@ class Experiment:
         if checkpoint:
             print (f"Loading checkpoint {checkpoint}")
             checkpoint = torch.load(checkpoint, map_location=device)
-            self.first_epoch = checkpoint['epoch']
+            self.first_epoch = checkpoint['last_epoch'] + 1
             net.load_state_dict(checkpoint['model_state_dict'])
+            if scheduler:
+                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             net.train()
 
@@ -93,7 +103,8 @@ class Experiment:
         torch.save({
             'model_state_dict': self.net.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'epoch': epoch,
+            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else {},
+            'last_epoch': epoch,
         }, self.log_path / f"checkpoint-{epoch:05d}.pt")
 
 
