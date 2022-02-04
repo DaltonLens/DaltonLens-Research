@@ -116,8 +116,9 @@ class UnetBlock(nn.Module):
         return self.block (x)
 
 class UnetDecoder(nn.Module):
-    def __init__(self):
+    def __init__(self, residual_mode):
         super().__init__()
+        self.residual_mode = residual_mode
         self.enc0 = ResnetBlock(3, 64)
 
         self.dec4     = UnetBlock(512,512, out_features=512)
@@ -161,13 +162,16 @@ class UnetDecoder(nn.Module):
         x = self.dec1(layer1, x)
         x = self.dec1_act(act1, x)
         x = self.dec0(self.enc0(img), x)
-        return self.head(x)
-
+        
+        if self.residual_mode:
+            return self.head(x) + img
+        else:
+            return self.head(x)
 class RegressionNet_Unet1(nn.Module):
-    def __init__(self):
+    def __init__(self, residual_mode = False):
         super().__init__()
         self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True)
-        self.decoder = UnetDecoder()
+        self.decoder = UnetDecoder(residual_mode)
         # {'module': 'act1', 'num_chs': 64, 'reduction': 2},
         # {'module': 'layer1', 'num_chs': 64, 'reduction': 4},
         # {'module': 'layer2', 'num_chs': 128, 'reduction': 8},
