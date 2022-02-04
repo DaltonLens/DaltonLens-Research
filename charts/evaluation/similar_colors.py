@@ -69,7 +69,9 @@ class HSVFinder(SimilarColorFinder):
 
 class DeepRegressionFinder(HSVFinder):
     def __init__(self, raw_image_rgb):
-        processor = cr.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unet_v1.pt")
+        # processor = cr.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unet_v1.pt")
+        processor = cr.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unetres_v1_scripted.pt")
+        
         filtered_image_rgb = processor.process_image(raw_image_rgb)
         super().__init__(filtered_image_rgb, plot_mode=False)
 
@@ -77,9 +79,9 @@ def precision_recall_f1 (estimated_mask, gt_mask):
     num_gt_true = np.count_nonzero(gt_mask)
     num_estimated_true = np.count_nonzero(estimated_mask)
     correct_true = np.count_nonzero(estimated_mask & gt_mask)
-    recall = correct_true / num_gt_true
+    recall = np.float64(correct_true / num_gt_true)
     precision = correct_true / num_estimated_true
-    f1_score = 2.0 * precision * recall / (precision + recall)
+    f1_score = 2.0 * precision * recall / np.float64(precision + recall)
     if np.isnan(f1_score):
         f1_score = 0.0
     return (precision, recall, f1_score)
@@ -115,7 +117,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
     labels = labeled_image.json['labels']
     labels = labels[1:] # remove the first label, it's the background
     num_samples_per_label = int(num_samples / len(labels))
-    precision_recall_f1_scores = ([], [], [])
+    precision_recall_f1_scores = ([], [], [], [])
     wait_for_input = True
     for label_entry in labels:
         label = label_entry['label']
@@ -148,6 +150,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
             precision_recall_f1_scores[0].append (precision)
             precision_recall_f1_scores[1].append (recall)
             precision_recall_f1_scores[2].append (f1)
+            precision_recall_f1_scores[3].append ((r,c))
             if debug:
                 ic (precision)
                 ic (recall)
@@ -163,13 +166,14 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
 
     # Show all the values to get a quick overview.
     print ("(precision, recall, f1) = ", end =" ")
-    for p,r,f1 in zip(*precision_recall_f1_scores):
+    for p,r,f1,rc in zip(*precision_recall_f1_scores):
         if p > 0.9 and r > 0.4:
             color_prefix, color_suffix = (TermColors.GREEN, TermColors.END)
         elif p > 0.8 and r > 0.3:
             color_prefix, color_suffix = (TermColors.YELLOW, TermColors.END)
         else:
             color_prefix, color_suffix = (TermColors.RED, TermColors.END)
+            color_prefix += f"rc[{rc[0]},{rc[1]}]"
         print (f"{color_prefix}({p:.2f} {r:.2f} {f1:.2f}){color_suffix}", end =" ")
     print()
 
@@ -184,15 +188,17 @@ def main_interactive_evaluator():
     evaluator = InteractiveEvaluator()
     # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     labeled_image = LabeledImage (Path("generated/drawings-test/img-00000-000.json"))
+    # labeled_image = LabeledImage (Path("generated/drawings/img-00000-001.json"))
     labeled_image.ensure_images_loaded()
-    finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
+    image_rgb = labeled_image.rendered_image
+    # finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
     # labeled_image = None
-    # image_bgr = cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR)
-    # finder = DeepRegressionFinder(swap_rb(image_bgr))
+    # image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR))
+    finder = DeepRegressionFinder(image_rgb)
     evaluator.process_image (labeled_image.rendered_image, finder, labeled_image)
 
 def main_batch_evaluation ():
-    im = LabeledImage (Path("generated/drawings-tests/img-00000-000.json"))
+    im = LabeledImage (Path("generated/drawings-test/img-00000-000.json"))
     # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
     im.compute_labels_as_rgb()
@@ -201,8 +207,8 @@ def main_batch_evaluation ():
     evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
 
 def main():
-    main_interactive_evaluator()
     # main_batch_evaluation ()
+    main_interactive_evaluator()
 
 if __name__ == "__main__":
     main ()

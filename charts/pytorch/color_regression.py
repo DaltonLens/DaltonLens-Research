@@ -25,7 +25,9 @@ import sys
 
 from charts.common.utils import swap_rb
 
-import icecream as ic
+from icecream import ic
+
+from typing import List
 
 class ImagePreprocessor:   
     def __init__(self, device: torch.device, target_size: int = None):
@@ -111,7 +113,7 @@ class UnetBlock(nn.Module):
         )
 
     def forward(self, left, down):
-        down_upsampled = F.interpolate(down, scale_factor=2)
+        down_upsampled = F.interpolate(down, scale_factor=2.0)
         x = torch.cat((down_upsampled, left), dim=1)
         return self.block (x)
 
@@ -153,8 +155,19 @@ class UnetDecoder(nn.Module):
             nn.Conv2d(64, n_classes, kernel_size=1, padding=0),
         )
 
-    def forward(self, img, encoded_layers):
-        act1, layer1, layer2, layer3, layer4 = encoded_layers
+    def set_extra_state(self, state):
+        self.residual_mode = state['residual_mode']
+
+    def get_extra_state(self):
+        return {'residual_mode': self.residual_mode}
+
+    def forward(self, img, encoded_layers: List[torch.Tensor]):
+        act1 = encoded_layers[0]
+        layer1 = encoded_layers[1]
+        layer2 = encoded_layers[2]
+        layer3 = encoded_layers[3]
+        layer4 = encoded_layers[4]
+
         x = self.bottom(layer4)
         x = self.dec4(layer4, x)
         x = self.dec3(layer3, x)
@@ -170,7 +183,7 @@ class UnetDecoder(nn.Module):
 class RegressionNet_Unet1(nn.Module):
     def __init__(self, residual_mode = False):
         super().__init__()
-        self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True)
+        self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True, scriptable=True)
         self.decoder = UnetDecoder(residual_mode)
         # {'module': 'act1', 'num_chs': 64, 'reduction': 2},
         # {'module': 'layer1', 'num_chs': 64, 'reduction': 4},
@@ -183,7 +196,7 @@ class RegressionNet_Unet1(nn.Module):
         # layer2 torch.Size([8, 128, 12, 16]),
         # X torch.Size([8, 256, 6, 8]),
         # X torch.Size([8, 512, 3, 4])
-        
+
     def freeze_encoder(self):
         for p in self.encoder.parameters():
             p.requires_grad = False
@@ -220,21 +233,39 @@ def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.
     return num_good / num_pixels
 
 class Processor:
-    def __init__(self, network_model_pt: Path):
+    def __init__(self, torchscript_model_pt: Path):
         self.device = torch.device("cpu")
         self.preprocessor = ImagePreprocessor(self.device)
-        self.net = torch.load (network_model_pt, map_location=self.device)
+        # self.net = torch.load (network_model_pt, map_location=self.device)
+        self.net = torch.jit.load(torchscript_model_pt, map_location=self.device)
+        self.net.eval()
+        # In case only a checkpoint was saved, and not the full model
+        # self.net = RegressionNet_Unet1(residual_mode=True)
+        # checkpoint = torch.load (network_model_pt, map_location=self.device)
+        # self.net.load_state_dict(checkpoint['model_state_dict'])
+        # self.net.eval()
+        # torch.save(self.net, network_model_pt.with_suffix('.model.pt'))
 
     def process_image(self, image_rgb: np.ndarray):
-        input: Tensor = self.preprocessor.transform (image_rgb)
+        input: Tensor = self.preprocessor.transform (image_rgb, image_rgb)[0]
+        if (image_rgb.shape[0] % 32 != 0) or (image_rgb.shape[1] % 32 != 0):
+            input = transforms.CenterCrop(128)(input)
         input.unsqueeze_ (0) # add the batch dim
         output = self.net (input)
         output_im = self.preprocessor.denormalize_and_clip_as_numpy (output[0])
         output_im = (output_im * 255).astype(np.uint8)
+
+        input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])
+        input_cropped = (input_cropped * 255).astype(np.uint8)
+        
+        cv2.namedWindow("original - filtered", cv2.WINDOW_NORMAL)
+        cv2.imshow ('original - filtered', np.hstack([input_cropped, output_im]))
+
         return output_im
 
 if __name__ == "__main__":
-    processor = Processor(Path(__file__).parent / "regression_unet_v1.pt")
+    processor = Processor(Path(__file__).parent / "regression_unetres_v1_scripted.pt")
     im_rgb = swap_rb(cv2.imread(sys.argv[1], cv2.IMREAD_COLOR))
     output_image = processor.process_image (im_rgb)
     cv2.imwrite("output.png", swap_rb(output_image))
+    cv2.waitKey(0)
