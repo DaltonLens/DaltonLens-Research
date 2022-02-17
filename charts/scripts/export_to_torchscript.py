@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
-from charts.common.dataset import LabeledImage
-import charts.pytorch.segmentation_transforms as segmentation_transforms
-
-import charts.pytorch.color_regression as cr
+from dlcharts.common.dataset import LabeledImage
+from dlcharts.common.utils import swap_rb
+from dlcharts.pytorch import segmentation_transforms
+from dlcharts.pytorch import color_regression as cr
 
 import torch
 from torch import Tensor
@@ -24,8 +24,6 @@ import numpy as np
 
 from pathlib import Path
 import sys
-
-from charts.common.utils import swap_rb
 
 from icecream import ic
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from charts.common.dataset import Lab_from_sRGB, LabeledImage
+from ..common.dataset import Lab_from_sRGB, LabeledImage
 
 import torch
 from torch import Tensor
@@ -21,8 +21,8 @@ import math
 from pathlib import Path
 import sys
 
-from charts.common.utils import swap_rb
-from charts.pytorch.similar_colors import ImagePreprocessor, ColorRegressionImageDataset
+from ..common.utils import swap_rb
+from .color_regression import ImagePreprocessor, ColorRegressionImageDataset
 
 nbins_L = 8
 nbins_ab = 16

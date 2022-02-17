@@ -1,6 +1,6 @@
 from cProfile import label
-from charts.common.utils import *
-from charts.common.dataset import LabeledImage
+from ..common.utils import *
+from ..common.dataset import LabeledImage
 
 import cv2
 import numpy as np
@@ -10,7 +10,7 @@ from pathlib import Path
 from icecream import ic
 from abc import ABC, abstractmethod
 
-import charts.pytorch.color_regression as cr
+from ..pytorch import color_regression as cr
 
 debug = False
 

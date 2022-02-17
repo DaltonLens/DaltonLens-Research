@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
-from charts.common.dataset import LabeledImage
-import charts.pytorch.segmentation_transforms as segmentation_transforms
+from ..common.dataset import LabeledImage
+from . import segmentation_transforms
 
 import torch
 from torch import Tensor
@@ -23,7 +23,7 @@ import numpy as np
 from pathlib import Path
 import sys
 
-from charts.common.utils import swap_rb
+from ..common.utils import swap_rb
 
 from icecream import ic
 
