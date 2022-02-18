@@ -2,6 +2,7 @@ charts/inputs/opencv-generated/
 charts/experiments/
 charts/attic/parse_chart_v2/build/
 
+lightning_logs/
 logs/
 __pycache__/
 .vscode/

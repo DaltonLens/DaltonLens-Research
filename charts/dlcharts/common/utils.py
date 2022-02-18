@@ -61,3 +61,19 @@ def saturation(rgb):
     C = V - np.min(rgb)
     return C / V if V > 1e-8 else 0.0
     
+
+class InfiniteIterator:
+    def __init__(self, sequence):
+        self.sequence = sequence
+        self.it = iter(self.sequence)
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        try:
+            e = next(self.it)
+        except StopIteration:
+            self.it = iter(self.sequence)
+            e = next(self.it)
+        return e
