@@ -2,24 +2,38 @@
 
 import dlcharts
 import dlcharts.pytorch.color_regression as cr
-from dlcharts.pytorch.utils import is_google_colab
-from dlcharts.common.utils import InfiniteIterator
+from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating
+from dlcharts.pytorch.lightning import GlobalProgressBar, ValidationStepCallback
+from dlcharts.common.utils import printBold
 
 import torch
 from torch.nn import functional as F
 from torch import nn
 
 import pytorch_lightning as pl
+from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.utilities.warnings import LightningDeprecationWarning
+from pytorch_lightning.loggers import TensorBoardLogger
 
 from torch.utils.data import Dataset, DataLoader, random_split, SubsetRandomSampler
 import torch.utils.tensorboard
 
+import numpy as np
+
+from icecream import ic
+
+import argparse
 from typing import Optional
 from pathlib import Path
+from enum import Enum
+import logging
+import warnings
 import os
+import sys
 
 DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
-WORKERS=os.cpu_count() if is_google_colab() else 0
+WORKERS=0 if debugger_is_active() else os.cpu_count()
+WORKERS=os.cpu_count()
 
 class DrawingsDataModule(pl.LightningDataModule):
     def __init__(self, dataset_path: Path, batch_size:int = DEFAULT_BATCH_SIZE):
@@ -37,53 +51,72 @@ class DrawingsDataModule(pl.LightningDataModule):
         n_train = max(int(len(self.dataset) * 0.7), 1)
         n_val = len(self.dataset) - n_train
         generator = torch.Generator().manual_seed(42)
+        np_gen = np.random.default_rng(42)
 
-        train_indices = range(0, n_train)
-        val_indices = range(n_train, len(self.dataset))
+        train_indices = np.array(range(0, n_train))
+        np_gen.shuffle(train_indices)
 
-        self.train_sampler = SubsetRandomSampler(train_indices, generator=generator)
-        self.val_sampler = SubsetRandomSampler(val_indices, generator=generator)
+        val_indices = list(range(n_train, len(self.dataset)))
+        np_gen.shuffle(val_indices)
+
+        self.train_dataset = torch.utils.data.Subset(self.dataset, train_indices)
+        self.val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
 
         # We need to preload it to know its size and configure the scheduler.
-        self.preloaded_train_dataloader = DataLoader(self.dataset, sampler=self.train_sampler, batch_size=self.batch_size, num_workers=WORKERS)
+        self.preloaded_train_dataloader = DataLoader(self.train_dataset, shuffle=True, batch_size=self.batch_size, num_workers=WORKERS)
 
-        self.val_sampler_for_training_step = SubsetRandomSampler(val_indices, generator=generator)
-        self.val_dataloader_for_training_step = DataLoader(self.dataset, sampler=self.val_sampler_for_training_step, batch_size=self.batch_size, num_workers=WORKERS)
+        self.val_dataloader_for_training_step = DataLoader(self.val_dataset, shuffle=False, batch_size=self.batch_size, num_workers=WORKERS)
+
+        # They are shuffled, so we're fine.
+        self.monitored_train_samples = train_indices[0:5]
+        self.monitored_val_samples = val_indices[0:5]
 
     def train_dataloader(self):
         return self.preloaded_train_dataloader
 
     def val_dataloader(self):
-        return DataLoader(self.dataset, sampler=self.val_sampler, batch_size=self.batch_size, num_workers=WORKERS)
+        return DataLoader(self.val_dataset, shuffle=False, batch_size=self.batch_size, num_workers=WORKERS)
 
-
-class ValidationStepCallback(pl.Callback):
+class RegressionValidationStepCallback(ValidationStepCallback):
     def __init__(self, datamodule: pl.LightningDataModule):
-        self.datamodule = datamodule
+        super().__init__(datamodule)
 
-    def on_fit_start(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
-        self.infinite_iterator = InfiniteIterator(self.datamodule.val_dataloader_for_training_step)
-        return super().on_fit_start(trainer, pl_module)
+    def on_epoch_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
+        def evaluate_images_at_indices(indices):
+            inputs = []
+            outputs = []
+            targets = []
+            for idx in indices:
+                input,target,_ = pl_module.transfer_batch_to_device(self.datamodule.dataset[idx], pl_module.device, 0)
+                output = pl_module(input.unsqueeze(0)).squeeze(0)
+                inputs.append(trainer.datamodule.preprocessor.denormalize_and_clip_as_tensor(input.detach().cpu()))
+                outputs.append(trainer.datamodule.preprocessor.denormalize_and_clip_as_tensor(output.detach().cpu()))
+                targets.append(trainer.datamodule.preprocessor.denormalize_and_clip_as_tensor(target.detach().cpu()))
+            return torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
+        
+        with evaluating(pl_module):
+            results_train = evaluate_images_at_indices(trainer.datamodule.monitored_train_samples)
+            pl_module.writer.add_image("Train Samples", results_train, trainer.current_epoch)
 
-    def on_batch_end(self, trainer: pl.Trainer, pl_module: pl.LightningModule) -> None:
-        if pl_module.global_step % trainer.log_every_n_steps == 0:
-            batch = next(self.infinite_iterator)
-            batch_device = pl_module.transfer_batch_to_device(batch, pl_module.device, 0)
-            
-            with torch.no_grad():
-                pl_module.eval()
-                val_loss = pl_module.validation_step(batch_device, 0)
-                pl_module.train()
-            
-            pl_module.writer.add_scalars('loss_iter', dict(val=val_loss), pl_module.global_step)
-        return super().on_batch_end(trainer, pl_module)
+            results_val = evaluate_images_at_indices(trainer.datamodule.monitored_val_samples)
+            pl_module.writer.add_image("Val Samples", results_val, trainer.current_epoch)
+
+        return super().on_epoch_end(trainer, pl_module)
+
+class Phase(Enum):
+    DecoderOnly = 0
+    FineTune = 1
 
 class RegressionModule(pl.LightningModule):
-    def __init__(self, lr=1e-3):
+    def __init__(self, phase: Phase, encoder_lr=1e-4, decoder_lr=1e-3, regression_model: str = 'uresnet18-v1'):
         super().__init__()
-
         self.save_hyperparameters()
-        self.model = dlcharts.pytorch.models.create_regression_model('uresnet18-v1')
+        self.model = dlcharts.pytorch.models.create_regression_model(regression_model)
+        
+        # Aliases to get nice summary stats.
+        self.encoder = self.model.encoder
+        self.decoder = self.model.decoder
+
         self.loss_fn = nn.MSELoss()
         self.val_iterator_per_training_step = None
 
@@ -93,6 +126,11 @@ class RegressionModule(pl.LightningModule):
         return y
 
     def on_fit_start(self) -> None:
+        if self.hparams.phase == Phase.DecoderOnly:
+            self.model.freeze_encoder ()
+        else:
+            self.model.unfreeze_encoder ()
+        ic(num_trainable_parameters(self.model))
         return super().on_fit_start()
 
     def training_step(self, batch, batch_idx):
@@ -102,7 +140,7 @@ class RegressionModule(pl.LightningModule):
         loss = self.loss_fn(outputs, labels)
         
         if self.global_step % self.trainer.log_every_n_steps == 0:
-            self.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)
+            self.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)        
 
         return loss
 
@@ -128,11 +166,15 @@ class RegressionModule(pl.LightningModule):
         return super().validation_epoch_end(outputs)
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
+        optimizer = torch.optim.Adam([
+            {'params': self.encoder.parameters(), 'lr': self.hparams.encoder_lr },
+            {'params': self.decoder.parameters(), 'lr': self.hparams.decoder_lr }
+        ])
+
         dm = self.trainer.datamodule
         train_loader_len = len(dm.preloaded_train_dataloader)
         steps_per_epoch = (train_loader_len//dm.hparams.batch_size)//self.trainer.accumulate_grad_batches
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, self.hparams.lr, steps_per_epoch=steps_per_epoch, epochs=self.trainer.max_epochs)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, [self.hparams.encoder_lr, self.hparams.decoder_lr], steps_per_epoch=steps_per_epoch, epochs=self.trainer.max_epochs)
         return {
                 "optimizer": optimizer,
                 "lr_scheduler": {
@@ -141,19 +183,127 @@ class RegressionModule(pl.LightningModule):
                 },
             }
 
+
+def fit_decoder_only(args, dataset_path: Path, xp_dir, trainer_common_params):
+    data = DrawingsDataModule(dataset_path, batch_size=args.batch_size)
+
+    tb_logger = TensorBoardLogger(xp_dir/'decoder-only', name='', version='tb')
+
+    trainer = pl.Trainer(
+        max_epochs=args.epochs_decoder_only,
+        
+        default_root_dir=xp_dir / 'decoder-only',
+        
+        callbacks=[
+            ModelCheckpoint(dirpath=xp_dir/'decoder-only', save_last=True),
+            RegressionValidationStepCallback(data),
+            GlobalProgressBar(),
+        ],
+
+        logger=tb_logger,
+
+        **trainer_common_params
+    )
+
+    ckpt_path = xp_dir/'decoder-only'/'last.ckpt'
+    if not ckpt_path.exists():
+        ckpt_path = None
+    
+
+    model = RegressionModule(phase=Phase.DecoderOnly, encoder_lr=0.0, decoder_lr=args.decoder_lr)
+    trainer.fit(model, data, ckpt_path=ckpt_path)
+    
+def finetune(args, dataset_path: Path, xp_dir, trainer_common_params):
+    data = DrawingsDataModule(dataset_path, batch_size=args.batch_size)
+
+    ckpt_path = xp_dir/'finetune'/'last.ckpt'
+    if not ckpt_path.exists():
+        ckpt_path = None
+
+    tb_logger = TensorBoardLogger(xp_dir/'finetune', name='', version='tb')
+
+    trainer = pl.Trainer(
+        max_epochs=args.epochs_finetune,
+
+        callbacks=[
+            ModelCheckpoint(dirpath=xp_dir/'finetune', save_last=True),
+            RegressionValidationStepCallback(data),
+            GlobalProgressBar(),
+        ],
+
+        logger=tb_logger,
+
+        **trainer_common_params
+    )
+
+    model = RegressionModule.load_from_checkpoint(
+        checkpoint_path=xp_dir/'decoder-only'/'last.ckpt', 
+        phase=Phase.FineTune,
+        encoder_lr=args.encoder_lr,
+        decoder_lr=args.decoder_lr)
+
+    trainer.fit(model, data, ckpt_path=ckpt_path)
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('name', type=str)
+    parser.add_argument("--validate", action='store_true')
+    parser.add_argument("--decoder_lr", type=float, default=1e-3)
+    parser.add_argument("--encoder_lr", type=float, default=1e-4)
+    parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument("--overfit", type=int, default=0)
+
+    parser.add_argument("--epochs_decoder_only", type=int, default=40)
+    parser.add_argument("--epochs_finetune", type=int, default=20)
+    
+    args = parser.parse_args()
+    if args.validate:
+        args.epochs_decoder_only = 2
+        args.epochs_finetune = 2
+
+    return args
+
 if __name__ == "__main__":
+    args = parse_args()
+
+    if not args.validate:
+        logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
+        warnings.simplefilter("ignore", LightningDeprecationWarning)
+        warnings.filterwarnings("ignore", '.*')
+
     root_dir = Path(__file__).parent.parent
     dataset_path = Path("/content/datasets/drawings") if is_google_colab() else root_dir / 'inputs' / 'opencv-generated' / 'drawings'
-    data = DrawingsDataModule(dataset_path)
-    model = RegressionModule()
-    trainer = pl.Trainer(
-        # gpus=1,
-        max_epochs=5, 
-        val_check_interval=1.0, 
-        limit_val_batches=2, 
-        limit_train_batches=10,
-        log_every_n_steps=1,
-        # fast_dev_run = 1,
-        callbacks=[ValidationStepCallback(data)])
 
-    trainer.fit(model, data)
+    trainer_common_params = dict(
+        gpus=1,
+
+        overfit_batches = args.overfit if args.overfit != 0 else 0.0,
+
+        # fast_dev_run = True
+
+        val_check_interval=1.0,
+        log_every_n_steps=5,
+
+        limit_val_batches=1 if args.validate else 0,
+        limit_train_batches=1 if args.validate else 0,
+    )
+
+    # https://github.com/PyTorchLightning/pytorch-lightning/issues/2006
+    #   Discusses various options
+    # https://github.com/PyTorchLightning/pytorch-lightning/issues/3095
+    #   Option calling fit twice
+
+    xp_name = args.name
+    xp_dir = root_dir / 'logs' / xp_name
+
+    print (f"Training experiment stored in {xp_dir}")
+    print()
+
+    printBold (">>> Training the decoder only...")
+    fit_decoder_only (args, dataset_path, xp_dir, trainer_common_params)
+
+    dlcharts.pytorch.utils.clear_gpu_memory()
+
+    print()
+    printBold (">>> Fine-tuning the entire model...")
+    finetune (args, dataset_path, xp_dir, trainer_common_params)

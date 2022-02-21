@@ -47,6 +47,11 @@ class TermColors:
     BEIGEBG2  = '\33[106m'
     WHITEBG2  = '\33[107m'
 
+def printBold(*args, **kwargs):
+    print(TermColors.BOLD, end=None)
+    print(*args, **kwargs)
+    print(TermColors.END, end=None)
+
 def in_range(im: np.ndarray, r: int, c: int):
     return r >= 0 and r < im.shape[0] and c >= 0 and c < im.shape[1]
 

@@ -7,13 +7,20 @@ from torch.utils.tensorboard import SummaryWriter
 from datetime import datetime
 from pathlib import Path
 import shutil
+from contextlib import contextmanager
 
 import gc
 import inspect
+import sys
 
 default_output_dir = Path(__file__).resolve().parent / "experiments"
 
 _already_checked_is_google_colab = None
+
+def debugger_is_active() -> bool:
+    """Return if the debugger is currently active"""
+    gettrace = getattr(sys, 'gettrace', lambda : None) 
+    return gettrace() is not None
 
 def is_google_colab():
     global _already_checked_is_google_colab
@@ -33,6 +40,17 @@ def stop_google_colab_vm():
         subprocess.run(["jupyter", "notebook", "stop", "8888"])
         subprocess.run(["sleep", "5"])
         subprocess.run(["kill", "-9", "-1"])
+
+@contextmanager
+def evaluating(net):
+    '''Temporarily switch to evaluation mode.'''
+    istrain = net.training
+    try:
+        net.eval()
+        yield net
+    finally:
+        if istrain:
+            net.train()
 
 def merge_dicts(*dict_args):
     """
