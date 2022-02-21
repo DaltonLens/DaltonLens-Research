@@ -5,7 +5,6 @@ charts/attic/parse_chart_v2/build/
 lightning_logs/
 logs/
 __pycache__/
-.vscode/
 .ipynb_checkpoints/
 build/
 .eggs/

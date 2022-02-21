@@ -1,0 +1,20 @@
+{
+    "cSpell.words": [
+        "astype",
+        "Conv",
+        "cuda",
+        "desaturate",
+        "dlcharts",
+        "hparams",
+        "hyperparams",
+        "imread",
+        "IMREAD",
+        "imshow",
+        "ndarray",
+        "sklearn",
+        "timm",
+        "tqdm",
+        "Unet",
+        "whitebg"
+    ]
+}
