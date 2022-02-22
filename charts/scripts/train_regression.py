@@ -27,6 +27,7 @@ from typing import Optional
 from pathlib import Path
 from enum import Enum
 import logging
+import math
 import warnings
 import os
 import sys
@@ -173,7 +174,8 @@ class RegressionModule(pl.LightningModule):
 
         dm = self.trainer.datamodule
         train_loader_len = len(dm.preloaded_train_dataloader)
-        steps_per_epoch = (train_loader_len//dm.hparams.batch_size)//self.trainer.accumulate_grad_batches
+        assert self.trainer.accumulate_grad_batches == 1 # not supported yet, would need to check the math
+        steps_per_epoch = train_loader_len
         scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, [self.hparams.encoder_lr, self.hparams.decoder_lr], steps_per_epoch=steps_per_epoch, epochs=self.trainer.max_epochs)
         return {
                 "optimizer": optimizer,
@@ -207,8 +209,7 @@ def fit_decoder_only(args, dataset_path: Path, xp_dir, trainer_common_params):
 
     ckpt_path = xp_dir/'decoder-only'/'last.ckpt'
     if not ckpt_path.exists():
-        ckpt_path = None
-    
+        ckpt_path = None    
 
     model = RegressionModule(phase=Phase.DecoderOnly, encoder_lr=0.0, decoder_lr=args.decoder_lr)
     trainer.fit(model, data, ckpt_path=ckpt_path)
@@ -266,7 +267,7 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    if not args.validate:
+    if False and not args.validate:
         logging.getLogger("pytorch_lightning").setLevel(logging.ERROR)
         warnings.simplefilter("ignore", LightningDeprecationWarning)
         warnings.filterwarnings("ignore", '.*')
@@ -284,8 +285,10 @@ if __name__ == "__main__":
         val_check_interval=1.0,
         log_every_n_steps=5,
 
-        limit_val_batches=1 if args.validate else 0,
-        limit_train_batches=1 if args.validate else 0,
+        limit_val_batches=1 if args.validate else 1.0,
+        limit_train_batches=1 if args.validate else 1.0,
+
+        # profiler="simple",
     )
 
     # https://github.com/PyTorchLightning/pytorch-lightning/issues/2006
