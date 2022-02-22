@@ -11,6 +11,7 @@
         "IMREAD",
         "imshow",
         "ndarray",
+        "numel",
         "sklearn",
         "timm",
         "tqdm",

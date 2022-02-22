@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 
+import shutil
 import dlcharts
+from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating
 from dlcharts.pytorch.lightning import GlobalProgressBar, ValidationStepCallback, ColabCheckpointIO
@@ -107,6 +109,14 @@ class Phase(Enum):
     DecoderOnly = 0
     FineTune = 1
 
+def regression_accuracy(outputs: torch.Tensor, labels: torch.Tensor):
+    diff = torch.abs(outputs-labels)
+    max_diff = torch.max(diff, dim=1)[0]
+    num_good = torch.count_nonzero(max_diff < ((20/255.0)*2.0))
+    num_pixels = max_diff.numel()
+    accuracy = num_good / num_pixels
+    return accuracy
+
 class RegressionModule(pl.LightningModule):
     def __init__(self, phase: Phase, encoder_lr=1e-4, decoder_lr=1e-3, regression_model: str = 'uresnet18-v1'):
         super().__init__()
@@ -119,6 +129,8 @@ class RegressionModule(pl.LightningModule):
 
         self.loss_fn = nn.MSELoss()
         self.val_iterator_per_training_step = None
+
+        self.accuracy_fn = regression_accuracy
 
     def forward(self, x):
         batch_size, channels, height, width = x.size()
@@ -135,20 +147,23 @@ class RegressionModule(pl.LightningModule):
 
     def training_step(self, batch, batch_idx):
         inputs, labels, json_files = batch
-        outputs = self(inputs)                
-        
+        outputs = self(inputs)                        
         loss = self.loss_fn(outputs, labels)
+        accuracy = self.accuracy_fn(outputs, labels)
         
         if self.global_step % self.trainer.log_every_n_steps == 0:
-            self.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)        
+            self.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)
+            self.writer.add_scalars('accuracy_iter', dict(train=accuracy), self.global_step)            
 
-        return loss
+        self.log('acc', accuracy, on_step=True, on_epoch=False, prog_bar=True, logger=False)
+        return dict(loss=loss, accuracy=accuracy)
 
     def validation_step(self, batch, batch_idx):
         inputs, labels, json_files = batch
         outputs = self(inputs)
         loss = self.loss_fn(outputs, labels)
-        return loss
+        accuracy = self.accuracy_fn(outputs, labels)
+        return dict(loss=loss, accuracy=accuracy)
 
     @property
     def writer(self) -> torch.utils.tensorboard.writer.SummaryWriter:
@@ -160,9 +175,11 @@ class RegressionModule(pl.LightningModule):
         return super().training_epoch_end(outputs)
 
     def validation_epoch_end(self, outputs) -> None:
-        loss = torch.stack(outputs).mean()
+        loss = torch.stack([o['loss'] for o in outputs]).mean()
+        accuracy = torch.stack([o['accuracy'] for o in outputs]).mean()
         self.writer.add_scalars('loss_epoch', dict(val=loss), self.current_epoch)
-        self.log("hp_metric", loss)
+        self.writer.add_scalars('accuracy_epoch', dict(val=accuracy), self.current_epoch)
+        self.log("hp_metric", accuracy)
         return super().validation_epoch_end(outputs)
 
     def configure_optimizers(self):
@@ -252,6 +269,7 @@ def parse_args():
     parser.add_argument("--encoder_lr", type=float, default=1e-4)
     parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--overfit", type=int, default=0)
+    parser.add_argument("--clean_previous", action='store_true')
 
     parser.add_argument("--epochs_decoder_only", type=int, default=40)
     parser.add_argument("--epochs_finetune", type=int, default=20)
@@ -299,6 +317,10 @@ if __name__ == "__main__":
 
     xp_name = args.name
     xp_dir = root_dir / 'logs' / xp_name
+
+    if args.clean_previous:
+        print(f"Warning: cleaning {xp_dir}")
+        shutil.rmtree(xp_dir, ignore_errors=True)
 
     print (f"Training experiment stored in {xp_dir}")
     print()

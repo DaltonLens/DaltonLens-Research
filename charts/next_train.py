@@ -3,15 +3,19 @@
 import subprocess
 from tqdm import tqdm
 import sys
+import shutil
 
 def quick_validate():
     subprocess.run([
             "python3", "scripts/train_regression.py",
-            f"quick",            
+            f"quick",
+            
+            "--clean_previous",
+
             "--batch_size", "4",
 
-            "--validate",
-            "--overfit", "1",
+            # "--validate",
+            "--overfit", "2",
         ], check=True)
 
 if __name__ == "__main__":

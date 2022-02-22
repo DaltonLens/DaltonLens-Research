@@ -72,8 +72,9 @@ class ValidationStepCallback(pl.Callback):
             
             with torch.no_grad():
                 pl_module.eval()
-                val_loss = pl_module.validation_step(batch_device, 0)
+                val_dict = pl_module.validation_step(batch_device, 0)
                 pl_module.train()
             
-            pl_module.writer.add_scalars('loss_iter', dict(val=val_loss), pl_module.global_step)
+            pl_module.writer.add_scalars('loss_iter', dict(val=val_dict['loss']), pl_module.global_step)
+            pl_module.writer.add_scalars('acccurary_iter', dict(val=val_dict['accuracy']), pl_module.global_step)
         return super().on_batch_end(trainer, pl_module)
