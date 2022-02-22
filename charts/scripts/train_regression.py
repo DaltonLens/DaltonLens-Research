@@ -227,7 +227,12 @@ def fit_decoder_only(args, dataset_path: Path, xp_dir, trainer_common_params):
     if not ckpt_path.exists():
         ckpt_path = None    
 
-    model = RegressionModule(phase=Phase.DecoderOnly, encoder_lr=0.0, decoder_lr=args.decoder_lr)
+    model = RegressionModule(
+        phase=Phase.DecoderOnly, 
+        regression_model=args.model, 
+        encoder_lr=0.0, 
+        decoder_lr=args.decoder_lr
+    )
     trainer.fit(model, data, ckpt_path=ckpt_path)
     
 def finetune(args, dataset_path: Path, xp_dir, trainer_common_params):
@@ -257,7 +262,9 @@ def finetune(args, dataset_path: Path, xp_dir, trainer_common_params):
         checkpoint_path=xp_dir/'decoder-only'/'last.ckpt', 
         phase=Phase.FineTune,
         encoder_lr=args.encoder_lr,
-        decoder_lr=args.decoder_lr)
+        decoder_lr=args.decoder_lr,
+        regression_model=args.model
+    )
 
     trainer.fit(model, data, ckpt_path=ckpt_path)
 
@@ -265,14 +272,18 @@ def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument('name', type=str)
     parser.add_argument("--validate", action='store_true')
-    parser.add_argument("--decoder_lr", type=float, default=1e-3)
-    parser.add_argument("--encoder_lr", type=float, default=1e-4)
-    parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--overfit", type=int, default=0)
     parser.add_argument("--clean_previous", action='store_true')
-
+    
     parser.add_argument("--epochs_decoder_only", type=int, default=40)
     parser.add_argument("--epochs_finetune", type=int, default=20)
+
+    parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
+
+    parser.add_argument("--model", type=str, default="uresnet18-v1")
+    parser.add_argument("--decoder_lr", type=float, default=1e-3)
+    parser.add_argument("--encoder_lr", type=float, default=1e-4)
+
     
     args = parser.parse_args()
     if args.validate:
