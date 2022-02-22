@@ -5,6 +5,15 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Next Train",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts",
+            "program": "${workspaceFolder}/charts/next_train.py",
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Train Regression",
             "type": "python",
             "request": "launch",
@@ -13,13 +22,18 @@
             "console": "integratedTerminal",
             "justMyCode": false,
             "args": [
-                "xp6", 
-                "--decoder_lr", "1e-3", 
-                "--encoder_lr", "1e-5", 
-                "--batch_size", "64", 
+                "xp6",
+                "--decoder_lr",
+                "1e-3",
+                "--encoder_lr",
+                "1e-5",
+                "--batch_size",
+                "64",
                 //"--overfit", "2",
-                "--epochs_decoder_only", "2",
-                "--epochs_finetune", "2",
+                "--epochs_decoder_only",
+                "2",
+                "--epochs_finetune",
+                "2",
                 //"--validate"
             ]
         }

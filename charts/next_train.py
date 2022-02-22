@@ -2,8 +2,23 @@
 
 import subprocess
 from tqdm import tqdm
+import sys
+
+def quick_validate():
+    subprocess.run([
+            "python3", "scripts/train_regression.py",
+            f"quick",            
+            "--batch_size", "4",
+
+            "--validate",
+            "--overfit", "1",
+        ], check=True)
 
 if __name__ == "__main__":
+
+    quick_validate()
+    sys.exit(0)
+
     version = 0
     for decoder_lr in tqdm([5e-3, 1e-3, 1e-4]):
         subprocess.run([

@@ -5,9 +5,24 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import TQDMProgressBar
 import pytorch_lightning.callbacks.progress.tqdm_progress as tqdm_progress
+from pytorch_lightning.plugins import CheckpointIO
+from pytorch_lightning.plugins.io import TorchCheckpointIO
 
+import os
 import sys
 from typing import Optional
+
+class ColabCheckpointIO(TorchCheckpointIO):
+    def __init__(self):
+        super().__init__()
+    
+    def remove_checkpoint(self, path):
+        # Make it empty before removing it, this way colab won't eat so much space
+        # in the trash.
+        # https://stackoverflow.com/a/60729125/1737680
+        if os.path.exists(path):
+            open(path, 'w').close()
+        super().remove_checkpoint(path)
 
 class GlobalProgressBar(TQDMProgressBar):
     def __init__(self):

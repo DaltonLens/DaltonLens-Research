@@ -3,7 +3,7 @@
 import dlcharts
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating
-from dlcharts.pytorch.lightning import GlobalProgressBar, ValidationStepCallback
+from dlcharts.pytorch.lightning import GlobalProgressBar, ValidationStepCallback, ColabCheckpointIO
 from dlcharts.common.utils import printBold
 
 import torch
@@ -34,7 +34,6 @@ import sys
 
 DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
-WORKERS=os.cpu_count()
 
 class DrawingsDataModule(pl.LightningDataModule):
     def __init__(self, dataset_path: Path, batch_size:int = DEFAULT_BATCH_SIZE):
@@ -276,7 +275,9 @@ if __name__ == "__main__":
     dataset_path = Path("/content/datasets/drawings") if is_google_colab() else root_dir / 'inputs' / 'opencv-generated' / 'drawings'
 
     trainer_common_params = dict(
-        gpus=1,
+        # gpus=1,
+
+        plugins = [ColabCheckpointIO()],
 
         overfit_batches = args.overfit if args.overfit != 0 else 0.0,
 
