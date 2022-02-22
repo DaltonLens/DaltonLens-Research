@@ -146,6 +146,6 @@ def create_regression_model(name):
     model = None
     if name == 'uresnet18-v1':
         model = RegressionNet_UResNet18()
-    if name == 'uresnet18-v1-residual':
+    elif name == 'uresnet18-v1-residual':
         model = RegressionNet_UResNet18(residual_mode=True)
     return model

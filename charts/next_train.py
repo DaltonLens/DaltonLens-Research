@@ -42,8 +42,8 @@ if __name__ == "__main__":
                     "--model", model,
 
                     # TEMP!
-                    "--validate",
-                    "--overfit", "1",
-                    "--batch_size", "4",
+                    # "--validate",
+                    # "--overfit", "1",
+                    # "--batch_size", "4",
                 ], check=True)
                 version += 1

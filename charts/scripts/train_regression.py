@@ -304,7 +304,7 @@ if __name__ == "__main__":
     dataset_path = Path("/content/datasets/drawings") if is_google_colab() else root_dir / 'inputs' / 'opencv-generated' / 'drawings'
 
     trainer_common_params = dict(
-        # gpus=1,
+        gpus=1,
 
         plugins = [ColabCheckpointIO()],
 
