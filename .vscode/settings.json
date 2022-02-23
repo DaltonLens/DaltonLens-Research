@@ -5,6 +5,7 @@
         "cuda",
         "desaturate",
         "dlcharts",
+        "dtype",
         "hparams",
         "hyperparams",
         "imread",

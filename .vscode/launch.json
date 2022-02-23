@@ -14,6 +14,16 @@
         },
 
         {
+            "name": "Generate Matplotlib",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts",
+            "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_matplotlib.py",
+            "justMyCode": false,
+            "console": "integratedTerminal"
+        },
+
+        {
             "name": "Train Regression",
             "type": "python",
             "request": "launch",
