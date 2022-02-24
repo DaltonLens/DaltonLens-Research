@@ -1,6 +1,9 @@
 import numpy as np
 import cv2
 
+import matplotlib.pyplot as plt
+import matplotlib as mpl
+
 import multiprocessing as mp
 from multiprocessing import connection
 import queue
@@ -13,11 +16,13 @@ from enum import Enum
 class DebuggerElement(Enum):
     StopProcess=0
     Image=1
+    Figure=2
 
 class _CVLogChild:
     def __init__(self, conn: connection.Connection):
         self._conn = conn
         self._num_cv_images = 0
+        self._num_figures = 0
         self._shutdown = False
 
     def _process_input(self, e):
@@ -28,16 +33,24 @@ class _CVLogChild:
             img, name = data
             cv2.imshow(name, img)
             self._num_cv_images += 1
+        elif kind == DebuggerElement.Figure:
+            fig, name = data
+            if name:
+                fig.canvas.manager.set_window_title(name)
+            fig.show ()
+            self._num_figures += 1
 
     def run (self):
         while not self._shutdown:
             if self._num_cv_images > 0:
-                cv2.waitKey(100)
+                cv2.waitKey(5)
+
+            if self._num_figures > 0:
+                plt.pause(0.005)
             
-            if self._conn.poll(0.01):
+            if self._conn.poll(0.005):
                 e = self._conn.recv()
                 self._process_input (e)
-
 class CVLog:
     def __init__(self):
         self.child = None
@@ -48,6 +61,18 @@ class CVLog:
     def image(self, img: np.ndarray, name: str):
         self._ensure_started()
         self.parent_conn.send((DebuggerElement.Image, (img, name)))
+
+    def plot(self, fig: mpl.figure.Figure, name: str = None):
+        """Show a matplotlib figure
+        
+        Sample code
+            with plt.ioff():
+                fig,ax = plt.subplots(1,1)
+                ax.plot([1,2,3], [1,4,9])
+                cvlog.plot(fig)
+        """
+        self._ensure_started()
+        self.parent_conn.send((DebuggerElement.Figure, (fig, name)))
 
     def _ensure_started (self):
         if not self.child:

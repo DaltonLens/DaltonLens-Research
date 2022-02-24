@@ -26,7 +26,17 @@ def generate_plot ():
 
 if __name__ == "__main__":
     # generate_plot ()
+
+    # cv2.imshow ('Test Image', np.random.rand(128,128,3))
+    # while True:
+    #     cv2.waitKey (0)
+
     for i in range(0,2):
         print ("Parent still running")
-        cvlog.image(np.random.rand(128,128,3), 'Test')
+        cvlog.image(np.random.rand(128,128,3), 'Test Image')
+        with plt.ioff():
+            fig, ax = plt.subplots(nrows=1, ncols=1)
+            ax.plot([1,2,3], [1,4,9])
+            cvlog.plot(fig, 'Test plot')
         time.sleep(1)
+    time.sleep(100)

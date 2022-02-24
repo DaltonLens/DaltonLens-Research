@@ -3,6 +3,7 @@
         "astype",
         "Conv",
         "cuda",
+        "cvlog",
         "desaturate",
         "dlcharts",
         "dtype",
