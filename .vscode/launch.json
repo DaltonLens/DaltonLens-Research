@@ -21,7 +21,10 @@
             "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_matplotlib.py",
             "justMyCode": false,
             "console": "integratedTerminal",
-            "args": ["mpl_generated"],
+            "args": [
+                "--num-images", "100",
+                "mpl_generated"
+            ],
         },
 
         {

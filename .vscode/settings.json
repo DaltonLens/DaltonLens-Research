@@ -18,6 +18,7 @@
         "ndarray",
         "nrows",
         "numel",
+        "rgen",
         "sklearn",
         "timm",
         "tqdm",

@@ -12,10 +12,12 @@ import time
 import copy
 import json
 import os
-from typing import Dict
+from typing import Dict, List
 from pathlib import Path
 
 from icecream import ic
+
+rgen = np.random.default_rng(42)
 
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Generating training images using Matplotlib')
@@ -34,14 +36,39 @@ def image_from_fig(fig):
 def color_index_to_label(i):
     return i*16 + 16
 
+def random_rgb(often_grayscale = False):
+    if often_grayscale and rgen.uniform(0,1) < 0.5:
+        v = rgen.integers(0,256,dtype=int)
+        return (v,v,v)
+    else:
+        return tuple(rgen.integers(0, 256, size=3, dtype=int).tolist())
+
+def random_rgb_different(other_rgbs: List, often_grayscale = False):
+    while True:
+        candidate_rgb = random_rgb(often_grayscale)
+        is_good = True
+        for other in other_rgbs:
+            if (np.sum(np.abs(np.subtract(candidate_rgb, other))) < 50):
+                is_good = False
+                break
+        if is_good:
+            return candidate_rgb
+
+def random_rgb_set(n: int, prev_colors = [], often_grayscale=False):
+    l = prev_colors.copy()
+    for i in range(n):
+        l.append(random_rgb_different(l, often_grayscale))
+    return l[len(prev_colors):]
+
 transparent = (0,0,0,0)
 
 def set_axes_color(color):
-    mpl.rcParams['axes.edgecolor'] = color
-    mpl.rcParams['axes.labelcolor'] = color
-    mpl.rcParams['xtick.color'] = color
-    mpl.rcParams['ytick.color'] = color
-    mpl.rcParams['grid.color'] = color
+    mpl_color = to_mpl_color(color)
+    mpl.rcParams['axes.edgecolor'] = mpl_color
+    mpl.rcParams['axes.labelcolor'] = mpl_color
+    mpl.rcParams['xtick.color'] = mpl_color
+    mpl.rcParams['ytick.color'] = mpl_color
+    mpl.rcParams['grid.color'] = mpl_color
 
 def hex_to_color(hex):
     hex = hex.lstrip('#')
@@ -56,17 +83,29 @@ def to_mpl_color(rgb):
 class Config:
     def __init__(self):
         self.backend = 'agg'
-        self.axes_color = '#ff0000'
-        self.bg_color = to_mpl_color((255,0,255))
-        self.plots_colors = [self.axes_color] + [hex_to_color(v['color']) for v in mpl.rcParams['axes.prop_cycle']]
-        self.funcs = [Func.sin(3,4), Func.sin(3,5), Func.poly([1, 0.1, 0, -0.001])]
-        self.linspace_args = (-1,1,5)
-        self.linewidth = 1.1
-        self.xscale = 0.01
-        self.yscale = 10.0
-        self.xoffset = -8.0
-        self.yoffset = 2.0
-        self.dpi = 120
+        nfuncs = rgen.integers(2,6)
+        often_gray_colors = random_rgb_set(2, [], often_grayscale=True)
+        self.bg_color = often_gray_colors[0]
+        self.axes_color = often_gray_colors[1]
+        self.plots_colors = [self.axes_color] + random_rgb_set(nfuncs, often_gray_colors)
+        #  [self.axes_color] + [hex_to_color(v['color']) for v in mpl.rcParams['axes.prop_cycle']]        
+        self.funcs = [Config.random_func() for v in range(nfuncs)]
+        self.linspace_args = (-1,1,rgen.integers(5,100))
+        self.linewidth = rgen.uniform(0.5,1.5) if rgen.uniform() < 0.9 else rgen.uniform(1.5,5)
+        self.xscale = rgen.uniform(0.01, 100.0)
+        self.yscale = rgen.uniform(0.01, 100.0)
+        self.xoffset = rgen.uniform(-2, 2)
+        self.yoffset = rgen.uniform(-2, 2)
+        self.dpi = rgen.integers(50,150)
+
+    def random_func():
+        kind = rgen.integers(0,2)
+        if kind == 0:
+            return Func.sin(rgen.uniform(-5,5), rgen.uniform(-5,5))
+        else:
+            num_coeffs = rgen.integers(1,4)
+            coeffs = rgen.uniform(-0.1, 0.1, size=num_coeffs)
+            return Func.poly(coeffs)
 class Func:
     def __init__(self) -> None:
         pass
@@ -86,23 +125,26 @@ def generate_plot (cfg: Config):
     for i, color in enumerate(plot_colors):
         colors_by_label[color_index_to_label(i)] = color
 
+    w, h, dpi = 256, 256, cfg.dpi
+
     def draw(fig, ax, colors):
         x = np.linspace(*cfg.linspace_args)
         for i, func in enumerate(cfg.funcs):
             ax.plot(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset, color=to_mpl_color(colors[i+1]), linewidth=cfg.linewidth)
-        return image_from_fig(fig)
-
-    w, h, dpi = 256, 256, cfg.dpi
+        im = image_from_fig(fig)
+        assert im.shape[0] == h and im.shape[1] == w
+        return im
 
     def create_fig():
-        return plt.subplots(nrows=1,ncols=1,figsize=(w/dpi, h/dpi),dpi=dpi)
+        # Add a small eps to make sure that we always get the right output size.
+        return plt.subplots(nrows=1,ncols=1,figsize=((w+1e-3)/dpi, (h+1e-3)/dpi),dpi=dpi)
 
     labels_image = np.zeros((h,w), dtype=np.uint8)
 
     mpl.use(cfg.backend)
 
     # Enable the background only for the rendered image.
-    mpl.rcParams['axes.facecolor'] = cfg.bg_color
+    mpl.rcParams['axes.facecolor'] = to_mpl_color(cfg.bg_color)
     set_axes_color (axes_color)
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
@@ -167,6 +209,8 @@ if __name__ == "__main__":
         cv2.imwrite(prefix + '.labels.png', labels)
         with open(prefix + '.json', 'w') as f:
             f.write (json.dumps(jsonEntries))
+
+        time.sleep (0.5)
 
     cvlog.waitUntilWindowsAreClosed()
 
