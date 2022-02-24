@@ -1,16 +1,29 @@
 #!/usr/bin/env python3
 
 from dlcharts.common.cvlog import cvlog
+from dlcharts.common.utils import swap_rb
 
+import argparse
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 import numpy as np
 import cv2
 import time
 import copy
+import json
+import os
 from typing import Dict
+from pathlib import Path
 
 from icecream import ic
+
+def parse_command_line():
+    parser = argparse.ArgumentParser(description='Generating training images using Matplotlib')
+    parser.add_argument('output_dir', help='Output folder for the generated images', type=Path)
+    parser.add_argument('--debug', help='Toggle visual debugging', default=False, action='store_const', const=True)
+    parser.add_argument('--num-images', help='Number of images to generate', default=2, type=int)
+    args = parser.parse_args()
+    return args
 
 def image_from_fig(fig):
     fig.canvas.draw()
@@ -92,10 +105,10 @@ def generate_plot (cfg: Config):
     mpl.rcParams['axes.facecolor'] = cfg.bg_color
     set_axes_color (axes_color)
     fig,ax = create_fig()
-    im = draw (fig, ax, plot_colors)
-    cvlog.image(im, 'Rendered')
-    mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
+    rendered_im = draw (fig, ax, plot_colors)
+    cvlog.image(rendered_im, 'Rendered')
 
+    mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
     mask2d = np.any(im != 255, axis=2)
@@ -130,16 +143,30 @@ def generate_plot (cfg: Config):
     jsonEntries['labels'] = jsonLabels
 
     ic(jsonEntries)
+    return rendered_im, labels_image, jsonEntries
 
 if __name__ == "__main__":
+
+    args = parse_command_line()
 
     # Should be started before creating any figure.
     cvlog.enabled = True
 
     plt.ioff()
 
-    config = Config()
-    generate_plot (config)
+    if not os.path.isdir(args.output_dir):
+        os.makedirs(args.output_dir)
+
+    for i in range(args.num_images):
+        config = Config()
+        rendered, labels, jsonEntries = generate_plot (config)
+
+        prefix = str(args.output_dir / f"img-{i:05d}")
+
+        cv2.imwrite(prefix + '.rendered.png', swap_rb(rendered))
+        cv2.imwrite(prefix + '.labels.png', labels)
+        with open(prefix + '.json', 'w') as f:
+            f.write (json.dumps(jsonEntries))
 
     cvlog.waitUntilWindowsAreClosed()
 

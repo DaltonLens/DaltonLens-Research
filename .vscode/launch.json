@@ -20,7 +20,8 @@
             "cwd": "${workspaceFolder}/charts",
             "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_matplotlib.py",
             "justMyCode": false,
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "args": ["mpl_generated"],
         },
 
         {
