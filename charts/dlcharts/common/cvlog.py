@@ -38,6 +38,9 @@ class _CVLogChild:
             self._stop_when_all_windows_closed = True
         elif kind == DebuggerElement.Image:
             img, name = data
+            # Support for mask images.
+            if img.dtype == np.bool:
+                img = img.astype(np.uint8)*255
             cv2.imshow(name, img)
             self._num_cv_images += 1
         elif kind == DebuggerElement.Figure:
@@ -76,7 +79,7 @@ class _CVLogChild:
             
             if self._conn.poll(0.005):
                 e = self._conn.recv()
-                self._process_input (e)            
+                self._process_input (e)    
 
 class CVLog:
     def __init__(self):
@@ -95,9 +98,10 @@ class CVLog:
     def enabled(self, value): self._enabled = value
 
     def waitUntilWindowsAreClosed(self):
-        self.parent_conn.send((DebuggerElement.StopWhenAllWindowsClosed, None))
-        self.child.join()
-        self.child = None
+        if self.child:
+            self.parent_conn.send((DebuggerElement.StopWhenAllWindowsClosed, None))
+            self.child.join()
+            self.child = None
 
     def shutdown(self):
         if self.child:
