@@ -4,8 +4,10 @@ import cv2
 import matplotlib.pyplot as plt
 import matplotlib as mpl
 
+import argparse
 import multiprocessing as mp
 from multiprocessing import connection
+from multiprocessing.connection import Client, Listener
 import queue
 import time
 import pickle
@@ -26,6 +28,7 @@ class _CVLogChild:
     def __init__(self, conn: connection.Connection):
         self._conn = conn
         self._num_cv_images = 0
+        self._cv2_was_initialized = False
         self._shutdown = False
         self._stop_when_all_windows_closed = False
         self._figures_by_name = dict()
@@ -43,6 +46,7 @@ class _CVLogChild:
                 img = img.astype(np.uint8)*255
             cv2.imshow(name, img)
             self._num_cv_images += 1
+            self._cv2_was_initialized = True
         elif kind == DebuggerElement.Figure:
             fig, name = data
             if name in self._figures_by_name:
@@ -63,7 +67,7 @@ class _CVLogChild:
 
     def run (self):        
         while not self._shouldStop():
-            if self._num_cv_images > 0:
+            if self._num_cv_images > 0 or self._cv2_was_initialized:
                 k = cv2.waitKey(5)
                 if k&0xff == ord('q'):
                     cv2.destroyAllWindows()
@@ -81,6 +85,24 @@ class _CVLogChild:
                 e = self._conn.recv()
                 self._process_input (e)    
 
+class CVLogServer:
+    def __init__(self, interface = '127.0.0.1', port = 7007):
+        print (f"Server listening on {interface}:{port}...")
+        self.listener = Listener(('127.0.0.1', port), authkey=b'cvlog')
+        cvlog.start ()
+
+    def start (self):
+        while True:
+            with self.listener.accept() as conn:
+                print('connection accepted from', self.listener.last_accepted)
+                try:
+                    while True:
+                        e = conn.recv()
+                        cvlog._send_raw(e)
+                except Exception as e:
+                    print (f"ERROR: got exception {type(e)}, closing the client")
+                    conn.close()
+
 class CVLog:
     def __init__(self):
         # Start the subprocess right away, to make sure that we won't fork
@@ -89,13 +111,31 @@ class CVLog:
         # memory of the main process.
         # But keep it disabled by default until explicitly enabled.
         self._enabled = False
-        self._start_child ()
+        self.child = None
+
+    def start(self, address_and_port=None):
+        """ Example of address and port ('127.0.0.1', 7007)
+        """
+        if not address_and_port:
+            self._start_child ()
+        else:
+            self.parent_conn = None
+            delay = 1
+            while self.parent_conn is None:
+                try:
+                    self.parent_conn = Client(address_and_port, authkey=b'cvlog')
+                except ConnectionRefusedError:
+                    print(f"ERROR: CVLog: cannot connect to {address_and_port}, retrying in {delay} seconds...")
+                    time.sleep (delay)
+                    delay = min(delay*2, 4)
+        self.enabled = True
 
     @property
     def enabled(self): return self._enabled
 
     @enabled.setter
-    def enabled(self, value): self._enabled = value
+    def enabled(self, value):
+        self._enabled = value
 
     def waitUntilWindowsAreClosed(self):
         if self.child:
@@ -141,6 +181,9 @@ class CVLog:
         # Make sure that we'll kill the logger when shutting down the parent process.
         atexit.register(CVLog._cvlog_shutdown, self)
 
+    def _send_raw(self, e):
+        self.parent_conn.send(e)
+
     def _cvlog_shutdown(this_cvlog):
         this_cvlog.waitUntilWindowsAreClosed()
 
@@ -149,3 +192,16 @@ class CVLog:
         processor.run ()
 
 cvlog = CVLog()
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description='CVLog Server')
+    parser.add_argument('--test-client', help='Run as a test client')
+    args = parser.parse_args()
+    if args.test_client:
+        cvlog.start (('127.0.0.1',7007))
+        cvlog.enabled = True
+        cvlog.image(np.random.default_rng().random(size=(256,256,3)))
+        cvlog.waitUntilWindowsAreClosed()
+    else:
+        server = CVLogServer()
+        server.start ()
