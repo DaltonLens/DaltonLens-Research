@@ -18,11 +18,14 @@
         "ndarray",
         "nrows",
         "numel",
+        "optim",
+        "pbar",
         "rgen",
         "sklearn",
         "timm",
         "tqdm",
         "Unet",
+        "unsqueeze",
         "whitebg"
     ]
 }

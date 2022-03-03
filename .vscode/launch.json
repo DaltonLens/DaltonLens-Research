@@ -52,25 +52,10 @@
             "name": "Train Regression",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/charts/scripts/train_regression.py",
+            "program": "${workspaceFolder}/charts/next_train.py",
             "cwd": "${workspaceFolder}/charts",
             "console": "integratedTerminal",
             "justMyCode": false,
-            "args": [
-                "xp6",
-                "--decoder_lr",
-                "1e-3",
-                "--encoder_lr",
-                "1e-5",
-                "--batch_size",
-                "64",
-                //"--overfit", "2",
-                "--epochs_decoder_only",
-                "2",
-                "--epochs_finetune",
-                "2",
-                //"--validate"
-            ]
         }
     ]
 }

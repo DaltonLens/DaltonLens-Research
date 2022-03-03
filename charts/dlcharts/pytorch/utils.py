@@ -12,6 +12,7 @@ from contextlib import contextmanager
 import gc
 import inspect
 import sys
+from typing import Dict
 
 default_output_dir = Path(__file__).resolve().parent / "experiments"
 
@@ -68,7 +69,7 @@ class Experiment:
                  logs_root_dir: Path = default_output_dir,
                  clear_previous_results: bool = False,
                  clear_top_folder=False):
-        assert len(name) > 3
+        assert len(name) >= 1
         self.root_log_path = logs_root_dir / name        
         print (f"[XP] storing experiment data to {self.root_log_path}")
         self.clear_previous_results = clear_previous_results
@@ -80,7 +81,7 @@ class Experiment:
                 config_name: str,
                 net: torch.nn.Module,
                 optimizer: torch.optim.Optimizer,
-                scheduler: torch.optim.lr_scheduler._LRScheduler,
+                schedulers: Dict[str, torch.optim.lr_scheduler._LRScheduler],
                 device: torch.device,
                 sample_input: torch.Tensor,
                 default_first_epoch: int = 0):
@@ -88,7 +89,7 @@ class Experiment:
         self.log_path = self.root_log_path / config_name
         self.net = net
         self.optimizer = optimizer
-        self.scheduler = scheduler
+        self.schedulers = schedulers
         self.first_epoch = default_first_epoch
 
         print (f"[XP] storing config data to {self.log_path}")
@@ -105,8 +106,9 @@ class Experiment:
             checkpoint = torch.load(checkpoint, map_location=device)
             self.first_epoch = checkpoint['last_epoch'] + 1
             net.load_state_dict(checkpoint['model_state_dict'])
-            if scheduler:
-                scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+            if schedulers:
+                for name, scheduler in schedulers.items():
+                    scheduler.load_state_dict(checkpoint['scheduler_state_dict'][name])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             net.train()
 
@@ -118,10 +120,14 @@ class Experiment:
 
     def save_checkpoint (self, epoch):
         # now = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        scheduler_state_dicts = {}
+        if self.schedulers:
+            for name, scheduler in self.schedulers.items():
+                scheduler_state_dicts[name] = scheduler.state_dict()
         torch.save({
             'model_state_dict': self.net.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler else {},
+            'scheduler_state_dict': scheduler_state_dicts,
             'last_epoch': epoch,
         }, self.log_path / f"checkpoint-{epoch:05d}.pt")
 

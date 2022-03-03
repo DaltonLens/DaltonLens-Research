@@ -14,16 +14,15 @@ def quick_validate():
 
             "--batch_size", "4",
 
-            # "--validate",
-            "--overfit", "2",
+            "--validate",
 
             "--model", "uresnet18-v1-residual"
         ], check=True)
 
 if __name__ == "__main__":
 
-    # quick_validate()
-    # sys.exit(0)
+    quick_validate()
+    sys.exit(0)
 
     version = 0
     for model in ["uresnet18-v1", "uresnet18-v1-residual"]:
