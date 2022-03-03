@@ -192,7 +192,7 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     # Should be started before creating any figure.
-    cvlog.enabled = True
+    cvlog.start (('127.0.0.1', 7007))
 
     plt.ioff()
 

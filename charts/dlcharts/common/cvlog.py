@@ -124,8 +124,8 @@ class CVLog:
             while self.parent_conn is None:
                 try:
                     self.parent_conn = Client(address_and_port, authkey=b'cvlog')
-                except ConnectionRefusedError:
-                    print(f"ERROR: CVLog: cannot connect to {address_and_port}, retrying in {delay} seconds...")
+                except Exception as e:
+                    print(f"ERROR: CVLog: cannot connect to {address_and_port} ({repr(e)}), retrying in {delay} seconds...")
                     time.sleep (delay)
                     delay = min(delay*2, 4)
         self.enabled = True
@@ -150,7 +150,8 @@ class CVLog:
     def image(self, img: np.ndarray, name: str = "CVLog Image"):
         if not self._enabled:
             return
-        self.parent_conn.send((DebuggerElement.Image, (img, name)))
+        self._send((DebuggerElement.Image, (img, name)))
+
 
     def plot(self, fig: mpl.figure.Figure, name: str = "CVLog Plot"):
         """Show a matplotlib figure
@@ -163,7 +164,13 @@ class CVLog:
         """
         if not self._enabled:
             return
-        self.parent_conn.send((DebuggerElement.Figure, (fig, name)))
+        self._send((DebuggerElement.Figure, (fig, name)))
+
+    def _send(self, e):
+        try:
+            self.parent_conn.send(e)
+        except Exception as e:
+            print(f"CVLog error: {repr(e)}. {e} not sent.")
 
     def _start_child (self):
         if plt.get_fignums():
