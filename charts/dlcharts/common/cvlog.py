@@ -15,10 +15,10 @@ import sys
 
 import atexit
 
-from enum import Enum
+from enum import IntEnum
 
 from icecream import ic
-class DebuggerElement(Enum):
+class DebuggerElement(IntEnum):
     StopProcess=0
     StopWhenAllWindowsClosed=1
     Image=2

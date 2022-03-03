@@ -23,7 +23,6 @@
             "cwd": "${workspaceFolder}/charts",
             "program": "${workspaceFolder}/charts/dlcharts/common/cvlog.py",
             "console": "integratedTerminal",
-            "args": ["--server"],
         },
         
         {
