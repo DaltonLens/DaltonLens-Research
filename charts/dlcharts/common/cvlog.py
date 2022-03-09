@@ -38,14 +38,6 @@ class _CVLogChild:
         # Support for mask images.
         if img.dtype == np.bool:
             img = img.astype(np.uint8)*255
-        # FIXME: should handle that in zv.
-        if img.ndim == 2:
-            img = img[...,np.newaxis]
-            alpha = np.full((img.shape[0], img.shape[1], 1), 255, dtype=np.uint8)
-            img = np.c_[img, img, img, alpha]
-        if img.shape[2] == 3:
-            alpha = np.full((img.shape[0], img.shape[1], 1), 255, dtype=np.uint8)
-            img = np.c_[img, alpha]
         if self._zvViewer is None:
             self._zvViewer = zv.Viewer()
             self._zvViewer.initialize ()
