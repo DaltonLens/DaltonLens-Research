@@ -5,27 +5,6 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "CVLog Client",
-            "type": "python",
-            "request": "launch",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}/charts",
-            "program": "${workspaceFolder}/charts/dlcharts/common/cvlog.py",
-            "console": "integratedTerminal",
-            "args": ["--client"],
-        },
-
-        {
-            "name": "CVLog Server",
-            "type": "python",
-            "request": "launch",
-            "justMyCode": false,
-            "cwd": "${workspaceFolder}/charts",
-            "program": "${workspaceFolder}/charts/dlcharts/common/cvlog.py",
-            "console": "integratedTerminal",
-        },
-        
-        {
             "name": "Next Train",
             "type": "python",
             "request": "launch",

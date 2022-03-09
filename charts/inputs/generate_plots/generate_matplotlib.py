@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from dlcharts.common.cvlog import cvlog
+from zv.log import zvlog
 from dlcharts.common.utils import swap_rb
 
 import argparse
@@ -148,15 +148,15 @@ def generate_plot (cfg: Config):
     set_axes_color (axes_color)
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
-    cvlog.image(rendered_im, 'Rendered')
+    zvlog.image(rendered_im, 'Rendered')
 
     mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
     mask2d = np.any(im != 255, axis=2)
     labels_image[mask2d] = color_index_to_label(0)
-    # cvlog.image(mask2d, 'axes_mask')
-    # cvlog.image (im, "Axes only")
+    # zvlog.image(mask2d, 'axes_mask')
+    # zvlog.image (im, "Axes only")
 
     set_axes_color (transparent)
 
@@ -168,10 +168,10 @@ def generate_plot (cfg: Config):
         im = draw (fig, ax, colors)
         mask2d = np.any(im != 255, axis=2)
         labels_image[mask2d] = color_index_to_label(color_idx)
-        # cvlog.image (im, f"Visible line {i}")
-        # cvlog.image(mask2d, f"mask_{i}")
+        # zvlog.image (im, f"Visible line {i}")
+        # zvlog.image(mask2d, f"mask_{i}")
 
-    cvlog.image(labels_image, 'labels')
+    zvlog.image(labels_image, 'labels')
 
     jsonEntries = {}
     jsonEntries['size_cols_rows'] = [im.shape[1], im.shape[0]]
@@ -192,7 +192,8 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     # Should be started before creating any figure.
-    cvlog.start (('127.0.0.1', 7007))
+    zvlog.start (('127.0.0.1', 7007))
+    # zvlog.start ()
 
     plt.ioff()
 
@@ -210,9 +211,11 @@ if __name__ == "__main__":
         with open(prefix + '.json', 'w') as f:
             f.write (json.dumps(jsonEntries))
 
+        # if i % 10 == 0:
+        #     breakpoint()
         time.sleep (0.5)
 
-    cvlog.waitUntilWindowsAreClosed()
+    zvlog.waitUntilWindowsAreClosed()
 
     # cv2.imshow ('Test Image', np.random.rand(128,128,3))
     # while True:
