@@ -1,5 +1,5 @@
 import numpy as np
-import cv2
+import zv
 
 import matplotlib.pyplot as plt
 import matplotlib as mpl
@@ -28,10 +28,30 @@ class _CVLogChild:
     def __init__(self, conn: connection.Connection):
         self._conn = conn
         self._num_cv_images = 0
-        self._cv2_was_initialized = False
         self._shutdown = False
         self._stop_when_all_windows_closed = False
         self._figures_by_name = dict()
+        self._zvViewer = None
+
+    def _process_image (self, data):
+        img, name = data
+        # Support for mask images.
+        if img.dtype == np.bool:
+            img = img.astype(np.uint8)*255
+        # FIXME: should handle that in zv.
+        if img.ndim == 2:
+            img = img[...,np.newaxis]
+            alpha = np.full((img.shape[0], img.shape[1], 1), 255, dtype=np.uint8)
+            img = np.c_[img, img, img, alpha]
+        if img.shape[2] == 3:
+            alpha = np.full((img.shape[0], img.shape[1], 1), 255, dtype=np.uint8)
+            img = np.c_[img, alpha]
+        if self._zvViewer is None:
+            self._zvViewer = zv.Viewer()
+            self._zvViewer.initialize ()
+        self._zvViewer.addImage (name, img, -1, replace=True)
+        # cv2.imshow(name, img)
+        self._num_cv_images += 1
 
     def _process_input(self, e):
         kind, data = e
@@ -40,13 +60,7 @@ class _CVLogChild:
         elif kind == DebuggerElement.StopWhenAllWindowsClosed:
             self._stop_when_all_windows_closed = True
         elif kind == DebuggerElement.Image:
-            img, name = data
-            # Support for mask images.
-            if img.dtype == np.bool:
-                img = img.astype(np.uint8)*255
-            cv2.imshow(name, img)
-            self._num_cv_images += 1
-            self._cv2_was_initialized = True
+            self._process_image (data)
         elif kind == DebuggerElement.Figure:
             fig, name = data
             if name in self._figures_by_name:
@@ -67,11 +81,11 @@ class _CVLogChild:
 
     def run (self):        
         while not self._shouldStop():
-            if self._num_cv_images > 0 or self._cv2_was_initialized:
-                k = cv2.waitKey(5)
-                if k&0xff == ord('q'):
-                    cv2.destroyAllWindows()
+            if self._zvViewer is not None:
+                self._zvViewer.renderFrame (1.0 / 30.0)
+                if self._zvViewer.exitRequested():
                     self._num_cv_images = 0
+                    self._zvViewer = None
 
             if self._figures_by_name:
                 # This would always bring the window to front, which is not what I want.
