@@ -78,6 +78,8 @@ if __name__ == "__main__":
                 "python3", "scripts/train_regression.py",
                 f"{p.model}_bn{p.batch_size}_{p.decoder_lr}",
                 
+                "--clean_previous",
+
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,
                 "--encoder_lr", "1e-5",

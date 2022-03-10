@@ -286,6 +286,7 @@ class RegressionTrainer:
 def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('name', type=str)
+    parser.add_argument("--debug", action='store_true', help='Enable zvlog.')
     parser.add_argument("--validate", action='store_true')
     parser.add_argument("--overfit", type=int, default=0)
     parser.add_argument("--clean_previous", action='store_true')
@@ -307,8 +308,9 @@ def parse_command_line():
     return args
 
 if __name__ == "__main__":
-    zvlog.start (('127.0.0.1', 7007))
     args = parse_command_line()
+    if args.debug:
+        zvlog.start (('127.0.0.1', 7007))
 
     root_dir = Path(__file__).parent.parent
     opencv_dataset_path = root_dir / 'inputs' / 'opencv-generated' / 'drawings'
