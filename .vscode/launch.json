@@ -24,7 +24,23 @@
             "console": "integratedTerminal",
             "args": [
                 "--num-images", "100",
-                "mpl_generated"
+                "mpl-generated"
+            ],
+        },
+
+        {
+            "name": "Generate OpenCV",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts",
+            "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_opencv.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                // "--debug",
+                "--num-drawings", "10000",
+                "--num-images-per-drawing", "1",
+                "opencv-generated"
             ],
         },
 

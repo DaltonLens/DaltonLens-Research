@@ -3,6 +3,8 @@
 import argparse, json, os, random, sys
 from collections import namedtuple
 
+from zv.log import zvlog
+
 import cv2
 import numpy as np
 import time
@@ -10,8 +12,8 @@ import time
 target_size = (256, 256)
 num_classes_per_image = 4
 
-Line = namedtuple('Line', ['p1', 'p2'])
-Circle = namedtuple('Circle', ['center', 'radius'])
+Line = namedtuple('Line', ['p1', 'p2', 'thickness'])
+Circle = namedtuple('Circle', ['center', 'radius', 'thickness'])
 
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Generating training images using OpenCV draw')
@@ -30,8 +32,8 @@ def color_index_to_label(i):
 
 class DrawingSet:
     def __init__(self, img_size):
-        num_lines = 5
-        num_circles = 3
+        num_lines = random.randint(1, 6)
+        num_circles = random.randint(1, 4)
         self.image_buffer = np.zeros((img_size[1], img_size[0], 3), np.uint8)
 
         self.lines = []
@@ -40,7 +42,8 @@ class DrawingSet:
             x2 = random.randint(0, img_size[0])
             y1 = random.randint(0, img_size[1])
             y2 = random.randint(0, img_size[1])
-            self.lines.append( Line(p1=(x1,y1), p2=(x2,y2)) )
+            thickness = random.randint(1,3)
+            self.lines.append( Line(p1=(x1,y1), p2=(x2,y2), thickness=thickness))
 
         self.circles = []
         for i in range(0, num_circles):
@@ -48,13 +51,14 @@ class DrawingSet:
             y = random.randint(0, img_size[1])
             center = (x,y)
             radius = random.randint(5, img_size[0]/2)
-            self.circles.append(Circle(center=center, radius=radius))
+            thickness = random.randint(1,3)
+            self.circles.append(Circle(center=center, radius=radius, thickness=thickness))
 
     def draw(self, image, color):
-        for line in self.lines:
-            cv2.line(image, line.p1, line.p2, color, 1, cv2.LINE_AA)
+        for line in self.lines:            
+            cv2.line(image, line.p1, line.p2, color, line.thickness, cv2.LINE_AA)
         for circle in self.circles:
-            cv2.circle(image, circle.center, circle.radius, color, 1, cv2.LINE_AA)
+            cv2.circle(image, circle.center, circle.radius, color, circle.thickness, cv2.LINE_AA)
 
 class Renderer:
     def __init__(self):
@@ -68,7 +72,7 @@ class Renderer:
         self.drawing.draw (image, color)
         _, mask2d = cv2.threshold(cv2.cvtColor(self.image_buffer_for_mask, cv2.COLOR_BGR2GRAY),254,255,cv2.THRESH_BINARY)
         mask2d = 255-mask2d
-        cv2.imshow ('mask2d', mask2d)
+        zvlog.image ('mask2d', mask2d)
         mask[mask2d > 0] = label
 
 class TrainingImage:
@@ -138,14 +142,15 @@ class ImageGenerator:
         training_image = TrainingImage(self.image_buffer, self.mask_buffer, colors_by_label)
 
         if args.debug:
-            cv2.namedWindow('rendered', cv2.WINDOW_NORMAL)
-            cv2.imshow('rendered', self.image_buffer)
-            cv2.imshow('mask', self.mask_buffer)
+            zvlog.image('rendered', self.image_buffer)
+            zvlog.image('mask', self.mask_buffer)
 
         return training_image
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     args = parse_command_line()
+    if args.debug:
+        zvlog.start (('127.0.0.1', 7007))
     random.seed (time.time())
 
     if not os.path.isdir(args.output_dir):

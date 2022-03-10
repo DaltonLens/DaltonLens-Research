@@ -41,7 +41,10 @@ class ImagePreprocessor:
             Both(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         ]
         if target_size is not None:
-            transform_list.append(segmentation_transforms.RandomCropWithRegressionLabels(target_size))
+            transform_list += [
+                segmentation_transforms.RandomCropWithRegressionLabels(target_size),
+                segmentation_transforms.RandomHorizontalFlip(0.5),
+            ]
         
         self.transform = segmentation_transforms.Compose(transform_list)
 
@@ -54,6 +57,7 @@ class ImagePreprocessor:
 class ColorRegressionImageDataset(Dataset):
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
         self.img_dir = img_dir
+        self.preprocessor = preprocessor
         self.transform = preprocessor.transform
         self.max_length = max_length
 
@@ -71,7 +75,9 @@ class ColorRegressionImageDataset(Dataset):
         labels_image = labeled_img.labels_as_rgb
         labeled_img.release_images()
         if self.transform:
+            # zvlog.image ("original", image)
             image, labels_image = self.transform(image, labels_image)
+            # zvlog.image ("augmented", self.preprocessor.denormalize_and_clip_as_numpy(image))
         assert (image is not None)
         return image, labels_image, repr(self.labeled_images[idx])
 

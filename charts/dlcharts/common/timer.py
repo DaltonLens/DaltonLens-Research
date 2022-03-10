@@ -10,6 +10,19 @@ from contextlib import ContextDecorator
 
 from typing import Any, Callable, ClassVar, Optional, Union
 
+def pretty_duration(secs):
+    hours, remaining_secs = divmod(secs, 3600.0)
+    minutes, remaining_secs = divmod(remaining_secs, 60.0)
+    seconds, remaining_secs = divmod(remaining_secs, 1.0)
+    msecs = remaining_secs*1e3
+    if int(hours) > 0:
+        return f"{hours}h{minutes}m{round(seconds+remaining_secs)}s"
+    if int(minutes) > 0:
+        return f"{round(minutes)}m{round(seconds+remaining_secs)}s"
+    if int(seconds) > 0:
+        return f"{seconds+remaining_secs:.1f}s"
+    return f"{msecs:.1f}ms"
+
 class TimerError(Exception):
     """A custom exception used to report errors in use of Timer class"""
 
@@ -45,9 +58,10 @@ class Timer(ContextDecorator):
     def stop(self) -> float:
         """Stop the timer, and report the elapsed time"""
         last = time.perf_counter()
-        total_msecs = (last - self._start_time)*1e3
-        checkpoints = " ".join(map(lambda text_ms: f"[{text_ms[0]}={text_ms[1]:.1f}ms]", self._checkpoints))
-        print (f"[{self.name}] {total_msecs:.1f}ms {checkpoints}")
+        total_secs = (last - self._start_time)
+        checkpoints = " ".join(map(lambda text_ms: f"[{text_ms[0]}={pretty_duration(text_ms[1])}]", self._checkpoints))        
+
+        print (f"[{self.name}] {pretty_duration(total_secs)} {checkpoints}")
         self._start_time = None
         return last
 
