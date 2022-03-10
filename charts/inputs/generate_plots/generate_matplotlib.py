@@ -71,6 +71,11 @@ def set_axes_color(color):
     mpl.rcParams['ytick.color'] = mpl_color
     mpl.rcParams['grid.color'] = mpl_color
 
+def set_bg_color(color):
+    mpl_color = to_mpl_color(color)
+    mpl.rcParams['figure.facecolor'] = mpl_color
+    mpl.rcParams['axes.facecolor'] = mpl_color
+
 def hex_to_color(hex):
     hex = hex.lstrip('#')
     return tuple(int(hex[i:i+2], 16) for i in (0, 2, 4))
@@ -145,14 +150,14 @@ def generate_plot (cfg: Config):
     mpl.use(cfg.backend)
 
     # Enable the background only for the rendered image.
-    mpl.rcParams['axes.facecolor'] = to_mpl_color(cfg.bg_color)
+    set_bg_color(cfg.bg_color)
     set_axes_color (axes_color)
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
     zvlog.image('Rendered', rendered_im)
     plt.close(fig)
 
-    mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
+    set_bg_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
     mask2d = np.any(im != 255, axis=2)
@@ -196,7 +201,8 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     # Should be started before creating any figure.
-    # zvlog.start (('127.0.0.1', 7007))
+    if args.debug:
+        zvlog.start (('127.0.0.1', 7007))
     # zvlog.start ()
 
     plt.ioff()
