@@ -31,6 +31,8 @@ from dataclasses import dataclass
 
 from tqdm import tqdm
 
+from zv.log import zvlog
+
 DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
 @dataclass
@@ -103,8 +105,8 @@ class DrawingsData:
         self.val_dataloader_for_training_step = DataLoader(self.val_dataset, shuffle=False, batch_size=self.hparams.batch_size, num_workers=WORKERS)
 
         # They are shuffled, so we're fine.
-        self.monitored_train_samples = train_indices[0:5]
-        self.monitored_val_samples = val_indices[0:5]
+        self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
+        self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(3, n_val))]
 
 def regression_accuracy(outputs: torch.Tensor, labels: torch.Tensor):
     diff = torch.abs(outputs-labels)
@@ -136,8 +138,8 @@ class RegressionTrainer:
         
         self.data = data
         self.optimizer = self._create_optimizer()
-        frozen_scheduler = self._create_scheduler(data, frozen=False)
-        finetune_scheduler = self._create_scheduler(data, frozen=True)
+        frozen_scheduler = self._create_scheduler(data, frozen=True)
+        finetune_scheduler = self._create_scheduler(data, frozen=False)
 
         sample_input = data.dataset[0][0].unsqueeze(0).to(self.device)
         schedulers = dict(frozen_scheduler=frozen_scheduler,finetune_scheduler=finetune_scheduler)
@@ -186,7 +188,10 @@ class RegressionTrainer:
                 self.xp.writer.add_scalars('accuracy_iter', dict(train=accuracy), self.global_step)
 
             if batch_idx % 20 == 0:
-                self._compute_batch_validation(val_batch_iterator)                
+                self._compute_batch_validation(val_batch_iterator)
+
+            if current_epoch == 0 and batch_idx % 10 == 0:
+                self._compute_monitored_images()
 
         train_loss_epoch = cumulated_train_loss / num_batches
         self.xp.writer.add_scalars('loss_epoch', dict(train=train_loss_epoch), current_epoch)
@@ -194,10 +199,34 @@ class RegressionTrainer:
         epoch_val_loss, epoch_val_accuracy = self._compute_epoch_validation()
         metrics = EpochMetrics(training_loss=train_loss_epoch.item(), val_loss=epoch_val_loss.item(), val_accuracy=epoch_val_accuracy.item())
 
+        self._compute_monitored_images()
+
         self.xp.save_checkpoint(self.current_epoch)
 
         return metrics
             
+    def _compute_monitored_images(self):
+        def evaluate_images(title, sample_list):
+            inputs = []
+            outputs = []
+            targets = []
+            for idx, sample in enumerate(sample_list):
+                output, input, target, json_files = self._evaluate_single_item (sample)
+                inputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(input.detach().cpu()))
+                outputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(output.detach().cpu()))
+                targets.append(self.data.preprocessor.denormalize_and_clip_as_tensor(target.detach().cpu()))
+            epoch = self.current_epoch
+            for idx in range(0, len(outputs)):
+                zvlog.image (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
+                zvlog.image (f"{title}-{idx}-epoch{epoch}-output", outputs[idx].permute(1, 2, 0).numpy())
+                zvlog.image (f"{title}-{idx}-epoch{epoch}-target", targets[idx].permute(1, 2, 0).numpy())
+            stacked_for_tboard = torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
+            self.xp.writer.add_image(title, stacked_for_tboard, epoch)
+        
+        with evaluating(self.model), torch.no_grad():
+            evaluate_images("Train Samples", self.data.monitored_train_samples)
+            evaluate_images("Val Samples", self.data.monitored_val_samples)
+
     def _compute_batch_validation(self, val_batch_iterator):
         with evaluating(self.model), torch.no_grad():
             outputs, inputs, labels, json_files = self._evaluate_batch (next(val_batch_iterator))
@@ -210,6 +239,12 @@ class RegressionTrainer:
         inputs, labels, json_files = batch
         inputs, labels = inputs.to(self.device), labels.to(self.device)
         outputs = self.model(inputs)
+        return outputs, inputs, labels, json_files
+
+    def _evaluate_single_item(self, item):
+        inputs, labels, json_files = item
+        inputs, labels = inputs.to(self.device), labels.to(self.device)
+        outputs = self.model(inputs.unsqueeze(0)).squeeze(0)
         return outputs, inputs, labels, json_files
 
     def _compute_epoch_validation(self):
@@ -265,6 +300,7 @@ def parse_command_line():
     return args
 
 if __name__ == "__main__":
+    zvlog.start (('127.0.0.1', 7007))
     args = parse_command_line()
 
     root_dir = Path(__file__).parent.parent

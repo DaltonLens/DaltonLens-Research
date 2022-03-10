@@ -208,7 +208,7 @@ def main_batch_evaluation ():
     evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
 
 def main():
-    zvlog.start ()
+    zvlog.start (('127.0.0.1', 7007))
     # main_batch_evaluation ()
     main_interactive_evaluator()
 
