@@ -10,7 +10,8 @@
             "request": "launch",
             "cwd": "${workspaceFolder}/charts",
             "program": "${workspaceFolder}/charts/next_train.py",
-            "console": "integratedTerminal"
+            "console": "integratedTerminal",
+            "justMyCode": false,
         },
 
         {
@@ -28,13 +29,15 @@
         },
 
         {
-            "name": "Train Regression",
+            "name": "Evaluate",
             "type": "python",
             "request": "launch",
-            "program": "${workspaceFolder}/charts/next_train.py",
             "cwd": "${workspaceFolder}/charts",
-            "console": "integratedTerminal",
+            "program": "${workspaceFolder}/charts/dlcharts/evaluation/similar_colors.py",
             "justMyCode": false,
-        }
+            "console": "integratedTerminal",
+            "args": [
+            ],
+        },
     ]
 }

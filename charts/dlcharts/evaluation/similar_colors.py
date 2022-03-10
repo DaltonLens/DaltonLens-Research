@@ -1,16 +1,17 @@
 from cProfile import label
-from ..common.utils import *
-from ..common.dataset import LabeledImage
+from dlcharts.common.utils import *
+from dlcharts.common.dataset import LabeledImage
 
 import cv2
 import numpy as np
+from zv.log import zvlog
 
 import json
 from pathlib import Path
 from icecream import ic
 from abc import ABC, abstractmethod
 
-from ..pytorch import color_regression as cr
+from dlcharts.pytorch import color_regression as cr
 
 debug = False
 
@@ -69,8 +70,7 @@ class HSVFinder(SimilarColorFinder):
 
 class DeepRegressionFinder(HSVFinder):
     def __init__(self, raw_image_rgb):
-        # processor = cr.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unet_v1.pt")
-        processor = cr.Processor (Path(__file__).parent.parent / "pytorch" / "regression_unetres_v1_scripted.pt")
+        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / "regression_unetres_v1_scripted.pt")
         
         filtered_image_rgb = processor.process_image(raw_image_rgb)
         super().__init__(filtered_image_rgb, plot_mode=False)
@@ -95,11 +95,12 @@ class InteractiveEvaluator:
             if event != cv2.EVENT_LBUTTONDOWN:
                 return
             mask = finder.similar_colors(x, y)
-            cv2.imshow ("estimated", bool_image_to_uint8(mask))
+            zvlog.image ("estimated", bool_image_to_uint8(mask))
+            # cv2.imshow ("estimated", bool_image_to_uint8(mask))
 
             if labeled_image is not None:
                 label = labeled_image.labels_image[y,x]
-                cv2.imshow ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
+                zvlog.image ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
             
         cv2.namedWindow("image", cv2.WINDOW_NORMAL)
         cv2.setMouseCallback("image", handle_click)
@@ -154,7 +155,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
             if debug:
                 ic (precision)
                 ic (recall)
-                cv2.imshow ("estimated_mask", estimated_mask.astype(np.uint8)*255)
+                zvlog.image ("estimated_mask", estimated_mask.astype(np.uint8)*255)
                 if (wait_for_input and ic(cv2.waitKey(0)) == ord('q')):
                     wait_for_input = False
                 else:
@@ -187,7 +188,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
 def main_interactive_evaluator():
     evaluator = InteractiveEvaluator()
     # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
-    labeled_image = LabeledImage (Path("generated/drawings-test/img-00000-000.json"))
+    labeled_image = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
     # labeled_image = LabeledImage (Path("generated/drawings/img-00000-001.json"))
     labeled_image.ensure_images_loaded()
     image_rgb = labeled_image.rendered_image
@@ -198,7 +199,7 @@ def main_interactive_evaluator():
     evaluator.process_image (labeled_image.rendered_image, finder, labeled_image)
 
 def main_batch_evaluation ():
-    im = LabeledImage (Path("generated/drawings-test/img-00000-000.json"))
+    im = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
     # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
     im.compute_labels_as_rgb()
@@ -207,6 +208,7 @@ def main_batch_evaluation ():
     evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
 
 def main():
+    zvlog.start ()
     # main_batch_evaluation ()
     main_interactive_evaluator()
 

@@ -268,7 +268,8 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     root_dir = Path(__file__).parent.parent
-    dataset_path = Path("/content/datasets/drawings") if is_google_colab() else root_dir / 'inputs' / 'opencv-generated' / 'drawings'
+    opencv_dataset_path = root_dir / 'inputs' / 'opencv-generated' / 'drawings'
+    mpl_dataset_path = root_dir / 'inputs' / 'mpl_generated'
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -290,6 +291,6 @@ if __name__ == "__main__":
         decoder_lr = args.decoder_lr
     )
 
-    data = DrawingsData(dataset_path, params, hparams)
+    data = DrawingsData(opencv_dataset_path, params, hparams)
     trainer = RegressionTrainer(params, hparams)
     trainer.train (data)

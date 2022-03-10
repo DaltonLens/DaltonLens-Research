@@ -3,6 +3,8 @@
 from ..common.dataset import LabeledImage
 from . import segmentation_transforms
 
+from zv.log import zvlog
+
 import torch
 from torch import Tensor
 
@@ -125,9 +127,8 @@ class Processor:
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])
         input_cropped = (input_cropped * 255).astype(np.uint8)
         
-        cv2.namedWindow("original - filtered", cv2.WINDOW_NORMAL)
-        cv2.imshow ('original - filtered', np.hstack([input_cropped, output_im]))
-
+        zvlog.image ("original", input_cropped)
+        zvlog.image ("filtered", output_im)
         return output_im
 
 if __name__ == "__main__":

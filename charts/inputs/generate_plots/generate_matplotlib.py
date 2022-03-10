@@ -148,15 +148,15 @@ def generate_plot (cfg: Config):
     set_axes_color (axes_color)
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
-    zvlog.image(rendered_im, 'Rendered')
+    zvlog.image('Rendered', rendered_im)
 
     mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
     mask2d = np.any(im != 255, axis=2)
     labels_image[mask2d] = color_index_to_label(0)
-    # zvlog.image(mask2d, 'axes_mask')
-    # zvlog.image (im, "Axes only")
+    # zvlog.image('axes_mask', mask2d)
+    # zvlog.image ("Axes only", im)
 
     set_axes_color (transparent)
 
@@ -168,10 +168,10 @@ def generate_plot (cfg: Config):
         im = draw (fig, ax, colors)
         mask2d = np.any(im != 255, axis=2)
         labels_image[mask2d] = color_index_to_label(color_idx)
-        # zvlog.image (im, f"Visible line {i}")
-        # zvlog.image(mask2d, f"mask_{i}")
+        # zvlog.image (f"Visible line {i}", im)
+        # zvlog.image(f"mask_{i}", mask2d)
 
-    zvlog.image(labels_image, 'labels')
+    zvlog.image('labels', labels_image)
 
     jsonEntries = {}
     jsonEntries['size_cols_rows'] = [im.shape[1], im.shape[0]]
@@ -213,7 +213,7 @@ if __name__ == "__main__":
 
         # if i % 10 == 0:
         #     breakpoint()
-        time.sleep (0.5)
+        # time.sleep (0.5)
 
     zvlog.waitUntilWindowsAreClosed()
 
