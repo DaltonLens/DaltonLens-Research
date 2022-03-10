@@ -23,7 +23,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "--num-images", "100",
+                "--num-images", "5000",
                 "mpl-generated"
             ],
         },
@@ -38,7 +38,7 @@
             "console": "integratedTerminal",
             "args": [
                 // "--debug",
-                "--num-drawings", "10000",
+                "--num-drawings", "5000",
                 "--num-images-per-drawing", "1",
                 "opencv-generated"
             ],

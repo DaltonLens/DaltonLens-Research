@@ -61,7 +61,9 @@ class ColorRegressionImageDataset(Dataset):
         self.transform = preprocessor.transform
         self.max_length = max_length
 
-        json_files = sorted(img_dir.glob("img-?????-???.json"))
+        json_files = sorted(img_dir.glob("img-?????*.json"))
+        if not json_files:
+            raise Exception("No files in dataset {img_dir}")
         self.labeled_images = [LabeledImage(f) for f in json_files]
 
     def __len__(self):

@@ -16,6 +16,7 @@ from typing import Dict, List
 from pathlib import Path
 
 from icecream import ic
+from tqdm import tqdm
 
 rgen = np.random.default_rng(42)
 
@@ -149,12 +150,14 @@ def generate_plot (cfg: Config):
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
     zvlog.image('Rendered', rendered_im)
+    plt.close(fig)
 
     mpl.rcParams['axes.facecolor'] = to_mpl_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
     mask2d = np.any(im != 255, axis=2)
     labels_image[mask2d] = color_index_to_label(0)
+    plt.close(fig)
     # zvlog.image('axes_mask', mask2d)
     # zvlog.image ("Axes only", im)
 
@@ -162,12 +165,13 @@ def generate_plot (cfg: Config):
 
     for i in range(len(cfg.funcs)):
         color_idx = i+1 # first color is for axes
-        fig,ax = create_fig()
+        fig,ax = create_fig()        
         colors = [None] * len(plot_colors)
         colors[color_idx] = plot_colors[color_idx]
         im = draw (fig, ax, colors)
         mask2d = np.any(im != 255, axis=2)
         labels_image[mask2d] = color_index_to_label(color_idx)
+        plt.close(fig)
         # zvlog.image (f"Visible line {i}", im)
         # zvlog.image(f"mask_{i}", mask2d)
 
@@ -177,14 +181,14 @@ def generate_plot (cfg: Config):
     jsonEntries['size_cols_rows'] = [im.shape[1], im.shape[0]]
     jsonEntries['tags'] = ['matplotlib']
     jsonLabels = []
-    for label, bgr_color in colors_by_label.items():
+    for label, rgb_color in colors_by_label.items():
         jsonLabels.append({
             'label': label,
-            'rgb_color': [bgr_color[2], bgr_color[1], bgr_color[0]],
+            'rgb_color': [rgb_color[0], rgb_color[1], rgb_color[2]],
         })
     jsonEntries['labels'] = jsonLabels
 
-    ic(jsonEntries)
+    # ic(jsonEntries)
     return rendered_im, labels_image, jsonEntries
 
 if __name__ == "__main__":
@@ -192,7 +196,7 @@ if __name__ == "__main__":
     args = parse_command_line()
 
     # Should be started before creating any figure.
-    zvlog.start (('127.0.0.1', 7007))
+    # zvlog.start (('127.0.0.1', 7007))
     # zvlog.start ()
 
     plt.ioff()
@@ -200,12 +204,13 @@ if __name__ == "__main__":
     if not os.path.isdir(args.output_dir):
         os.makedirs(args.output_dir)
 
-    for i in range(args.num_images):
+    for i in tqdm(range(args.num_images)):
         config = Config()
         rendered, labels, jsonEntries = generate_plot (config)
 
         prefix = str(args.output_dir / f"img-{i:05d}")
 
+        # cv2 expects bgr
         cv2.imwrite(prefix + '.rendered.png', swap_rb(rendered))
         cv2.imwrite(prefix + '.labels.png', labels)
         with open(prefix + '.json', 'w') as f:

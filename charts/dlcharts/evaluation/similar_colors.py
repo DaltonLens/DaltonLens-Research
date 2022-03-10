@@ -10,8 +10,11 @@ import json
 from pathlib import Path
 from icecream import ic
 from abc import ABC, abstractmethod
+import sys
 
 from dlcharts.pytorch import color_regression as cr
+
+import argparse
 
 debug = False
 
@@ -185,18 +188,23 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
     print (f"Percentage of great results: {percentage_good:.2f}%")
     return (percentage_good, average_precision, average_recall, average_f1)
 
-def main_interactive_evaluator():
+def main_interactive_evaluator(image: Path, json: Path):
     evaluator = InteractiveEvaluator()
     # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
-    labeled_image = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
-    # labeled_image = LabeledImage (Path("generated/drawings/img-00000-001.json"))
-    labeled_image.ensure_images_loaded()
-    image_rgb = labeled_image.rendered_image
+    if json is not None:
+        labeled_image = LabeledImage (json)
+        # labeled_image = LabeledImage (Path("generated/drawings/img-00000-001.json"))
+        labeled_image.ensure_images_loaded()
+        image_rgb = labeled_image.rendered_image
+    else:
+        assert (image)
+        image_rgb = swap_rb(cv2.imread(image, cv2.IMREAD_COLOR))
+        labeled_image = None
     # finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
     # labeled_image = None
     # image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR))
     finder = DeepRegressionFinder(image_rgb)
-    evaluator.process_image (labeled_image.rendered_image, finder, labeled_image)
+    evaluator.process_image (image_rgb, finder, labeled_image)
 
 def main_batch_evaluation ():
     im = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
@@ -208,9 +216,21 @@ def main_batch_evaluation ():
     evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--image', type=Path, default=None)
+    parser.add_argument('--json', type=Path, default=None)
+    parser.add_argument("--batch", action='store_true')
+    args = parser.parse_args()
+    
     zvlog.start (('127.0.0.1', 7007))
-    # main_batch_evaluation ()
-    main_interactive_evaluator()
+
+    if args.batch:
+        main_batch_evaluation ()
+    else:
+        if not args.image and not args.json:
+            print ("ERROR: need to specify --image or --json")
+            sys.exit (1)
+        main_interactive_evaluator(args.image, args.json)
 
 if __name__ == "__main__":
     main ()

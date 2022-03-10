@@ -5,7 +5,7 @@ import dlcharts
 from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
-from dlcharts.common.utils import InfiniteIterator, printBold
+from dlcharts.common.utils import InfiniteIterator, printBold, swap_rb
 
 import torch
 from torch.nn import functional as F
@@ -15,11 +15,12 @@ from torch.utils.data import Dataset, DataLoader, random_split, SubsetRandomSamp
 import torch.utils.tensorboard
 
 import numpy as np
+import cv2
 
 from icecream import ic
 
 import argparse
-from typing import Optional
+from typing import Optional, List
 from pathlib import Path
 from enum import Enum
 import logging
@@ -66,19 +67,19 @@ class DrawingsData:
     train_dataloader: DataLoader
     val_dataloader: DataLoader
 
-    def __init__(self, dataset_path: Path, params: Params, hparams: Hparams):
+    def __init__(self, dataset_path: List[Path], params: Params, hparams: Hparams):
         super().__init__()
         self.params = params
         self.hparams = hparams
-        self.dataset_path = dataset_path
         self.preprocessor = cr.ImagePreprocessor(None, target_size=128)
-        self.dataset = cr.ColorRegressionImageDataset(dataset_path, self.preprocessor)
+        datasets = [cr.ColorRegressionImageDataset(path, self.preprocessor) for path in dataset_path]
+        self.dataset = torch.utils.data.ConcatDataset(datasets)
         
         self.generator = torch.Generator().manual_seed(42)
         self.np_gen = np.random.default_rng(42)
 
         if params.overfit != 0:
-            indices = self.np_gen.integers(low=0, high=len(self.dataset), size=params.overfit + 1)
+            indices = self.np_gen.choice(range(0, len(self.dataset)), size=params.overfit + 1, replace=False)
             self.dataset = torch.utils.data.Subset(self.dataset, indices)
         self.create ()
 
@@ -90,11 +91,11 @@ class DrawingsData:
             n_train = max(int(len(self.dataset) * 0.7), 1)
             n_val = len(self.dataset) - n_train
 
-        train_indices = np.array(range(0, n_train))
-        self.np_gen.shuffle(train_indices)
+        all_indices = np.array(range(0, len(self.dataset)))
+        self.np_gen.shuffle(all_indices)
 
-        val_indices = list(range(n_train, len(self.dataset)))
-        self.np_gen.shuffle(val_indices)
+        train_indices = all_indices[0:n_train]
+        val_indices = all_indices[n_train:]
 
         self.train_dataset = torch.utils.data.Subset(self.dataset, train_indices)
         self.val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
@@ -206,6 +207,12 @@ class RegressionTrainer:
         return metrics
             
     def _compute_monitored_images(self):
+        def log_and_save(name, im):
+            im = (im*255.99).astype(np.uint8)
+            zvlog.image(name, im)
+            # opencv expects bgr
+            cv2.imwrite(str(self.xp.log_path / (name + '.png')), swap_rb(im))
+            
         def evaluate_images(title, sample_list):
             inputs = []
             outputs = []
@@ -216,10 +223,10 @@ class RegressionTrainer:
                 outputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(output.detach().cpu()))
                 targets.append(self.data.preprocessor.denormalize_and_clip_as_tensor(target.detach().cpu()))
             epoch = self.current_epoch
-            for idx in range(0, len(outputs)):
-                zvlog.image (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
-                zvlog.image (f"{title}-{idx}-epoch{epoch}-output", outputs[idx].permute(1, 2, 0).numpy())
-                zvlog.image (f"{title}-{idx}-epoch{epoch}-target", targets[idx].permute(1, 2, 0).numpy())
+            for idx in range(0, len(outputs)):                
+                log_and_save (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
+                log_and_save (f"{title}-{idx}-epoch{epoch}-output", outputs[idx].permute(1, 2, 0).numpy())
+                log_and_save (f"{title}-{idx}-epoch{epoch}-target", targets[idx].permute(1, 2, 0).numpy())
             stacked_for_tboard = torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
             self.xp.writer.add_image(title, stacked_for_tboard, epoch)
         
@@ -305,7 +312,7 @@ if __name__ == "__main__":
 
     root_dir = Path(__file__).parent.parent
     opencv_dataset_path = root_dir / 'inputs' / 'opencv-generated' / 'drawings'
-    mpl_dataset_path = root_dir / 'inputs' / 'mpl_generated'
+    mpl_dataset_path = root_dir / 'inputs' / 'mpl-generated'
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -327,6 +334,6 @@ if __name__ == "__main__":
         decoder_lr = args.decoder_lr
     )
 
-    data = DrawingsData(opencv_dataset_path, params, hparams)
+    data = DrawingsData([opencv_dataset_path, mpl_dataset_path], params, hparams)
     trainer = RegressionTrainer(params, hparams)
     trainer.train (data)

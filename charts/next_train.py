@@ -81,7 +81,7 @@ if __name__ == "__main__":
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,
                 "--encoder_lr", "1e-5",
-                "--epochs_decoder_only", "30",
+                "--epochs_decoder_only", "100",
                 "--epochs_finetune", "10",
 
                 "--model", p.model,
