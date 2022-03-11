@@ -73,7 +73,7 @@ class HSVFinder(SimilarColorFinder):
 
 class DeepRegressionFinder(HSVFinder):
     def __init__(self, raw_image_rgb):
-        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / "regression_unetres_v1_scripted.pt")
+        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / "regression_unetres_v2_scripted.pt")
         
         filtered_image_rgb = processor.process_image(raw_image_rgb)
         super().__init__(filtered_image_rgb, plot_mode=False)
@@ -129,6 +129,8 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
         mask_for_label = labeled_image.mask_for_label(label)
         rc_with_label = np.nonzero(mask_for_label)
         num_pixels_with_label = rc_with_label[0].size
+        if num_pixels_with_label == 0:
+            continue
         coordinates = rng.integers(0, num_pixels_with_label, num_samples_per_label)
         if debug:
             cv2.imshow ("gt_mask", mask_for_label.astype(np.uint8)*255)
@@ -200,14 +202,15 @@ def main_interactive_evaluator(image: Path, json: Path):
         assert (image)
         image_rgb = swap_rb(cv2.imread(image, cv2.IMREAD_COLOR))
         labeled_image = None
-    # finder = HSVFinder(labeled_image.rendered_image, plot_mode=True)
+    # finder = HSVFinder(image_rgb, plot_mode=True)
     # labeled_image = None
     # image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR))
     finder = DeepRegressionFinder(image_rgb)
     evaluator.process_image (image_rgb, finder, labeled_image)
 
 def main_batch_evaluation ():
-    im = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
+    # im = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
+    im = LabeledImage (Path("inputs/mpl-generated/img-02778.json"))
     # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     im.ensure_images_loaded()
     im.compute_labels_as_rgb()

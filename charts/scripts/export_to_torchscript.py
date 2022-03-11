@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import dlcharts
 from dlcharts.common.dataset import LabeledImage
 from dlcharts.common.utils import swap_rb
 from dlcharts.pytorch import segmentation_transforms
@@ -29,7 +30,7 @@ from icecream import ic
 
 if __name__ == "__main__":
     checkpoint_file = sys.argv[1]
-    net = cr.RegressionNet_Unet1(residual_mode=True)
+    net = dlcharts.pytorch.models.RegressionNet_UResNet18(residual_mode=True)
     checkpoint = torch.load(checkpoint_file)
     net.load_state_dict(checkpoint['model_state_dict'])
     net.eval()

@@ -202,7 +202,11 @@ class RegressionTrainer:
 
         self._compute_monitored_images()
 
-        self.xp.save_checkpoint(self.current_epoch)
+        if (self.current_epoch > 0
+            and self.current_epoch % 10 == 0
+            or self.current_epoch == self.params.num_frozen_epochs-1
+            or self.current_epoch == self.params.num_finetune_epochs - 1):
+            self.xp.save_checkpoint(self.current_epoch)
 
         return metrics
             

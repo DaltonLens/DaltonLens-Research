@@ -53,6 +53,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
+                "--batch"
             ],
         },
     ]
