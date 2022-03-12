@@ -84,7 +84,7 @@ if __name__ == "__main__":
                 "--decoder_lr", p.decoder_lr,
                 "--encoder_lr", "1e-5",
                 "--epochs_decoder_only", "100",
-                "--epochs_finetune", "100",
+                "--epochs_finetune", "1000",
 
                 "--model", p.model,
 

@@ -110,8 +110,8 @@ class Experiment:
                 for name, scheduler in schedulers.items():
                     # Hack to skip the fine tune scheduler in case we changed the number
                     # of finetune iterations.
-                    # if name != 'finetune_scheduler':
-                    scheduler.load_state_dict(checkpoint['scheduler_state_dict'][name])
+                    if True: # name != 'finetune_scheduler':
+                        scheduler.load_state_dict(checkpoint['scheduler_state_dict'][name])
             optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
             net.train()
 

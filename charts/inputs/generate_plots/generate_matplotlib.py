@@ -166,7 +166,8 @@ def generate_plot (cfg: Config):
     # zvlog.image('axes_mask', mask2d)
     # zvlog.image ("Axes only", im)
 
-    set_axes_color (transparent)
+    # Same as the fake white background
+    set_axes_color ((255,255,255))
 
     for i in range(len(cfg.funcs)):
         color_idx = i+1 # first color is for axes
@@ -202,8 +203,8 @@ if __name__ == "__main__":
 
     # Should be started before creating any figure.
     if args.debug:
-        zvlog.start (('127.0.0.1', 7007))
-    # zvlog.start ()
+        # zvlog.start (('127.0.0.1', 7007))
+        zvlog.start ()
 
     plt.ioff()
 
