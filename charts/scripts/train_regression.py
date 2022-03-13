@@ -42,6 +42,7 @@ class Hparams:
     encoder_lr: float = 1e-5
     decoder_lr: float = 1e-3
     regression_model: str = 'uresnet18-v1'
+    loss: str = 'mse'
 
 @dataclass
 class Params:
@@ -131,11 +132,15 @@ class RegressionTrainer:
                              clear_previous_results=params.clear_previous_results,
                              clear_top_folder=params.clear_top_folder)
 
+        losses = dict(
+            mse = nn.MSELoss(),
+            l1 = nn.L1Loss()
+        )
+        self.loss_fn = losses[hparams.loss]
+        self.accuracy_fn = regression_accuracy
+
     def train(self, data: DrawingsData):
         self.model.to(self.device)
-
-        self.loss_fn = nn.MSELoss()
-        self.accuracy_fn = regression_accuracy
         
         self.data = data
         self.optimizer = self._create_optimizer()
@@ -303,6 +308,7 @@ def parse_command_line():
     parser.add_argument("--model", type=str, default="uresnet18-v1")
     parser.add_argument("--decoder_lr", type=float, default=1e-3)
     parser.add_argument("--encoder_lr", type=float, default=1e-4)
+    parser.add_argument("--loss", type=str, default="mse")
     
     args = parser.parse_args()
     if args.validate:
@@ -337,7 +343,8 @@ if __name__ == "__main__":
     hparams = Hparams(
         batch_size = args.batch_size,
         encoder_lr = args.encoder_lr,
-        decoder_lr = args.decoder_lr
+        decoder_lr = args.decoder_lr,
+        loss = args.loss,
     )
 
     data = DrawingsData([opencv_dataset_path, mpl_dataset_path], params, hparams)

@@ -59,12 +59,14 @@ if __name__ == "__main__":
     #     model=["uresnet18-v1", "uresnet18-v1-residual"],
     #     decoder_lr=["5e-3", "1e-3", "1e-4"],
     #     batch_size = ["32", "64", "128"]
+    #     loss = ["mse", "l1"]
     # )
 
     params_set = dict(
         model=["uresnet18-v1-residual"],
         decoder_lr=["5e-3"],
-        batch_size = ["32"]
+        batch_size = ["32"],
+        loss = ["l1"]
     )
    
     # [dict1, dict2, ...]
@@ -76,17 +78,18 @@ if __name__ == "__main__":
         with Timer("Train one config"):
             subprocess.run([
                 "python3", "scripts/train_regression.py",
-                f"{p.model}_bn{p.batch_size}_{p.decoder_lr}",
+                f"{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}",
                 
                 # "--clean_previous",
-
+                
+                "--model", p.model,
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,
                 "--encoder_lr", "1e-5",
+                "--loss", p.loss,
+
                 "--epochs_decoder_only", "100",
                 "--epochs_finetune", "1000",
-
-                "--model", p.model,
 
                 # TEMP!
                 # "--validate",
