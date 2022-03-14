@@ -11,6 +11,7 @@ import time
 
 target_size = (256, 256)
 num_classes_per_image = 4
+threshold_extra_margin = 0
 
 Line = namedtuple('Line', ['p1', 'p2', 'thickness'])
 Circle = namedtuple('Circle', ['center', 'radius', 'thickness'])
@@ -70,7 +71,7 @@ class Renderer:
         self.image_buffer_for_mask[:] = (255,255,255)
         self.drawing.draw (self.image_buffer_for_mask, (0,0,0))
         self.drawing.draw (image, color)
-        _, mask2d = cv2.threshold(cv2.cvtColor(self.image_buffer_for_mask, cv2.COLOR_BGR2GRAY),254,255,cv2.THRESH_BINARY)
+        _, mask2d = cv2.threshold(cv2.cvtColor(self.image_buffer_for_mask, cv2.COLOR_BGR2GRAY),254-threshold_extra_margin,255,cv2.THRESH_BINARY)
         mask2d = 255-mask2d
         zvlog.image ('mask2d', mask2d)
         mask[mask2d > 0] = label

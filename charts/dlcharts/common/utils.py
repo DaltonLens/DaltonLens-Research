@@ -48,15 +48,15 @@ class TermColors:
     WHITEBG2  = '\33[107m'
 
 def printBold(*args, **kwargs):
-    print(TermColors.BOLD, end=None)
+    print(TermColors.BOLD, end='')
     print(*args, **kwargs)
-    print(TermColors.END, end=None)
+    print(TermColors.END, end='')
 
 def in_range(im: np.ndarray, r: int, c: int):
     return r >= 0 and r < im.shape[0] and c >= 0 and c < im.shape[1]
 
 def swap_rb(im):
-    return im[:,:,[2,1,0]]
+    return np.ascontiguousarray(im[:,:,[2,1,0]])
 
 def bool_image_to_uint8(im):
     return im.astype(np.uint8)*255

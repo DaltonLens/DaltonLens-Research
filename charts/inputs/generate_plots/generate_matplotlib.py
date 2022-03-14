@@ -18,13 +18,14 @@ from pathlib import Path
 from icecream import ic
 from tqdm import tqdm
 
-rgen = np.random.default_rng(42)
+rgen = np.random.default_rng(int(time.time()*1e3))
 
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Generating training images using Matplotlib')
     parser.add_argument('output_dir', help='Output folder for the generated images', type=Path)
     parser.add_argument('--debug', help='Toggle visual debugging', default=False, action='store_const', const=True)
     parser.add_argument('--num-images', help='Number of images to generate', default=2, type=int)
+    parser.add_argument('--margin', help='Mask extra margin', default=0, type=int)
     args = parser.parse_args()
     return args
 
@@ -160,7 +161,7 @@ def generate_plot (cfg: Config):
     set_bg_color((255,255,255))
     fig,ax = create_fig()
     im = draw (fig, ax, [None]*len(plot_colors))
-    mask2d = np.any(im != 255, axis=2)
+    mask2d = np.any(im < 255-args.margin, axis=2)
     labels_image[mask2d] = color_index_to_label(0)
     plt.close(fig)
     # zvlog.image('axes_mask', mask2d)
@@ -175,7 +176,7 @@ def generate_plot (cfg: Config):
         colors = [None] * len(plot_colors)
         colors[color_idx] = plot_colors[color_idx]
         im = draw (fig, ax, colors)
-        mask2d = np.any(im != 255, axis=2)
+        mask2d = np.any(im < 255-args.margin, axis=2)
         labels_image[mask2d] = color_index_to_label(color_idx)
         plt.close(fig)
         # zvlog.image (f"Visible line {i}", im)

@@ -125,8 +125,10 @@ class Processor:
 
     def process_image(self, image_rgb: np.ndarray):
         input: Tensor = self.preprocessor.transform (image_rgb, image_rgb)[0]
-        if (image_rgb.shape[0] % 32 != 0) or (image_rgb.shape[1] % 32 != 0):
-            input = transforms.CenterCrop(128)(input)
+        if (image_rgb.shape[0] % 64 != 0) or (image_rgb.shape[1] % 64 != 0):
+            new_size_y, new_size_x = 64 * (image_rgb.shape[0] // 64), 64 * (image_rgb.shape[1] // 64)
+            ic(new_size_x, new_size_y)
+            input = transforms.CenterCrop(min(new_size_x, new_size_y))(input)
         input.unsqueeze_ (0) # add the batch dim
         output = self.net (input)
         output_im = self.preprocessor.denormalize_and_clip_as_numpy (output[0])
@@ -137,7 +139,7 @@ class Processor:
         
         zvlog.image ("original", input_cropped)
         zvlog.image ("filtered", output_im)
-        return output_im
+        return output_im, input_cropped
 
 if __name__ == "__main__":
     processor = Processor(Path(__file__).parent / "regression_unetres_v1_scripted.pt")

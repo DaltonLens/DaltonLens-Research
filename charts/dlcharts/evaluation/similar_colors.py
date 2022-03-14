@@ -4,13 +4,20 @@ from dlcharts.common.dataset import LabeledImage
 
 import cv2
 import numpy as np
+from torch import per_channel_affine_float_qparams
 from zv.log import zvlog
+import zv
 
 import json
 from pathlib import Path
 from icecream import ic
 from abc import ABC, abstractmethod
 import sys
+import itertools
+
+from enum import Enum
+from dataclasses import dataclass
+from typing import List, Tuple
 
 from dlcharts.pytorch import color_regression as cr
 
@@ -18,14 +25,33 @@ import argparse
 
 debug = False
 
+class Rating(Enum):
+    GOOD=0
+    POOR=1
+    BAD=2
+
 class SimilarColorFinder(ABC):
-    def __init__(self, image_rgb):
+    def __init__(self, image_rgb, raw_image_rgb = None):
+        self.image_rgb = image_rgb
         self.float_image = image_rgb.astype(np.float32)
+        self.raw_image_rgb = raw_image_rgb if raw_image_rgb is not None else image_rgb
 
     # Baseline implemented with HSV
     @abstractmethod
     def similar_colors(self, c, r):
         return None
+
+class RGBFinder(SimilarColorFinder):
+    def __init__(self, image_rgb, raw_image_rgb):
+        super().__init__(image_rgb, raw_image_rgb)
+
+    # Simple RGB method
+    def similar_colors(self, c, r):
+        target_rgb = self.float_image[r,c,:]
+
+        rgbThreshold = 20.0
+        diff = np.max(np.abs(self.float_image - target_rgb), axis=-1)
+        return diff < rgbThreshold
 
 class HSVFinder(SimilarColorFinder):
     def __init__(self, image_rgb, plot_mode=True):
@@ -57,7 +83,13 @@ class HSVFinder(SimilarColorFinder):
         # an edge), then don't tolerate a huge delta.
         deltaColorThreshold = 10
 
-        if self.plot_mode:
+        plot_mode_for_this_pixel = self.plot_mode
+        if target_hsv[1] < 0.1:
+            plot_mode_for_this_pixel = False
+
+        # FIXME: comparing H sucks when saturation is low. DaltonLens has a hack
+        # for this, but we should just use something else.
+        if plot_mode_for_this_pixel:
             deltaH_360 = deltaColorThreshold
             deltaS_100 = deltaColorThreshold * 5.0 # tolerates 3x more since the range is [0,100]
             deltaV_255 = deltaColorThreshold * 12.0 # tolerates much more difference than hue.
@@ -71,18 +103,19 @@ class HSVFinder(SimilarColorFinder):
         deltaS = deltaS_100 / 100.0
         return np.all(diff < np.array([deltaH_360, deltaS, deltaV_255]), axis=-1)
 
-class DeepRegressionFinder(HSVFinder):
-    def __init__(self, raw_image_rgb):
-        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / "regression_unetres_v2_scripted.pt")
+class DeepRegressionFinder(RGBFinder):
+    def __init__(self, raw_image_rgb, model_file):
+        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / model_file)
         
-        filtered_image_rgb = processor.process_image(raw_image_rgb)
-        super().__init__(filtered_image_rgb, plot_mode=False)
+        filtered_image_rgb, maybe_cropped_raw_rgb = processor.process_image(raw_image_rgb)
+        super().__init__(filtered_image_rgb, maybe_cropped_raw_rgb)
 
 def precision_recall_f1 (estimated_mask, gt_mask):
-    num_gt_true = np.count_nonzero(gt_mask)
-    num_estimated_true = np.count_nonzero(estimated_mask)
-    correct_true = np.count_nonzero(estimated_mask & gt_mask)
-    recall = np.float64(correct_true / num_gt_true)
+    # Convert to float early to avoid exceptions because of a division by int 0
+    num_gt_true = np.float64(np.count_nonzero(gt_mask))
+    num_estimated_true = np.float64(np.count_nonzero(estimated_mask))
+    correct_true = np.float64(np.count_nonzero(estimated_mask & gt_mask))
+    recall = correct_true / num_gt_true
     precision = correct_true / num_estimated_true
     f1_score = 2.0 * precision * recall / np.float64(precision + recall)
     if np.isnan(f1_score):
@@ -93,23 +126,70 @@ class InteractiveEvaluator:
     def __init__(self):
         pass
 
-    def process_image (self, im_bgr: np.ndarray, finder: SimilarColorFinder, labeled_image: LabeledImage = None):
-        def handle_click(event, x, y, flags, param):
-            if event != cv2.EVENT_LBUTTONDOWN:
+    def process_image (self, im_rgb: np.ndarray, finder: SimilarColorFinder, labeled_image: LabeledImage = None):
+        app = zv.App()
+        app.initialize ()
+        viewer = app.getViewer()
+
+        # def handle_click(event, x, y, flags, param):
+        #     if event != cv2.EVENT_LBUTTONDOWN:
+        #         return
+        #     mask = finder.similar_colors(x, y)
+        #     zvlog.image ("estimated", bool_image_to_uint8(mask))
+        #     # cv2.imshow ("estimated", bool_image_to_uint8(mask))
+
+        #     if labeled_image is not None:
+        #         label = labeled_image.labels_image[y,x]
+        #         zvlog.image ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
+            
+        def event_callback (image_id, x, y, user_data):
+            if not zv.imgui.IsMouseClicked(zv.imgui.MouseButton.Left, False):
                 return
+            x,y = int(x), int(y)
             mask = finder.similar_colors(x, y)
-            zvlog.image ("estimated", bool_image_to_uint8(mask))
+            viewer.addImage ("estimated", bool_image_to_uint8(mask), replace=True)
             # cv2.imshow ("estimated", bool_image_to_uint8(mask))
 
             if labeled_image is not None:
                 label = labeled_image.labels_image[y,x]
-                zvlog.image ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
-            
-        cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-        cv2.setMouseCallback("image", handle_click)
-        cv2.imshow ("image", im_bgr)        
-        while cv2.waitKey(0) != ord('q'):
-            pass
+                viewer.addImage ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
+        
+        image_id = viewer.addImage ("Input image", np.ascontiguousarray(finder.raw_image_rgb))
+        viewer.setEventCallback(image_id, event_callback, None)
+
+        viewer.addImage("Filtered", np.ascontiguousarray(finder.image_rgb))
+
+        while app.numViewers > 0:
+            app.updateOnce (1.0 / 30.0)
+
+        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
+        # cv2.setMouseCallback("image", handle_click)
+        # cv2.imshow ("image", swap_rb(finder.raw_image_rgb))
+        # while cv2.waitKey(0) != ord('q'):
+        #     pass
+
+@dataclass
+class Score:
+    precision: float
+    recall: float
+    f1: float
+    rating: Rating
+    rc: Tuple
+
+@dataclass
+class Results:
+    percentage_good: float
+    average_precision: float
+    average_recall: float
+    average_f1: float
+
+def compute_rating(p, r, f1):
+    if p > 0.9 and r > 0.4:
+        return Rating.GOOD
+    elif p > 0.8 and r > 0.3:
+        return Rating.POOR
+    else:
+        return Rating.BAD
 
 def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode = False):
     # Fixed seed to make sure that we compare all the methods in
@@ -121,7 +201,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
     labels = labeled_image.json['labels']
     labels = labels[1:] # remove the first label, it's the background
     num_samples_per_label = int(num_samples / len(labels))
-    precision_recall_f1_scores = ([], [], [], [])
+    precision_recall_f1_scores: List[Score] = []
     wait_for_input = True
     for label_entry in labels:
         label = label_entry['label']
@@ -133,16 +213,22 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
             continue
         coordinates = rng.integers(0, num_pixels_with_label, num_samples_per_label)
         if debug:
-            cv2.imshow ("gt_mask", mask_for_label.astype(np.uint8)*255)
+            zvlog.image ("gt_mask", mask_for_label.astype(np.uint8)*255)
         for coord in coordinates:
             r = rc_with_label[0][coord]
             c = rc_with_label[1][coord]
 
+            # Try to find a nearby pixel that is closer to the true label.
+            # Makes sure it still has the right label though.
             if easy_mode:
                 min_diff_rc = (r,c)
                 min_diff = np.linalg.norm(labeled_image.rendered_image[r,c,:] - label_rgb)
                 for dr, dc in  [(-1,-1), (-1,0), (-1,1), (0,-1), (0,1), (1,-1), (1,0), (1,1)]:
                     if not in_range(labeled_image.rendered_image, r+dr, c+dc):
+                        continue
+                    # Make sure it still has the right label. Sometimes with a very weak alpha
+                    # the closest rgb might have a different label.
+                    if not mask_for_label[r+dr, c+dc]:
                         continue
                     diff = np.linalg.norm(labeled_image.rendered_image[r+dr,c+dc,:] - label_rgb)
                     if (diff < min_diff):
@@ -153,10 +239,8 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
             estimated_mask = finder.similar_colors (c,r)
 
             precision, recall, f1 = precision_recall_f1 (estimated_mask, mask_for_label)
-            precision_recall_f1_scores[0].append (precision)
-            precision_recall_f1_scores[1].append (recall)
-            precision_recall_f1_scores[2].append (f1)
-            precision_recall_f1_scores[3].append ((r,c))
+            score = Score(precision, recall, f1, compute_rating(precision, recall, f1), (r,c))
+            precision_recall_f1_scores.append(score)
             if debug:
                 ic (precision)
                 ic (recall)
@@ -166,31 +250,31 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
                 else:
                     cv2.waitKey(1)
         
-    average_precision = np.mean(precision_recall_f1_scores[0])
-    average_recall = np.mean(precision_recall_f1_scores[1])
-    average_f1 = np.mean(precision_recall_f1_scores[2])
+    average_precision = np.mean([score.precision for score in precision_recall_f1_scores])
+    average_recall = np.mean([score.recall for score in precision_recall_f1_scores])
+    average_f1 = np.mean([score.f1 for score in precision_recall_f1_scores])
 
     # Show all the values to get a quick overview.
     print ("(precision, recall, f1) = ", end =" ")
-    for p,r,f1,rc in zip(*precision_recall_f1_scores):
-        if p > 0.9 and r > 0.4:
+    for score in precision_recall_f1_scores:
+        if score.rating == Rating.GOOD:
             color_prefix, color_suffix = (TermColors.GREEN, TermColors.END)
-        elif p > 0.8 and r > 0.3:
+        elif score.rating == Rating.POOR:
             color_prefix, color_suffix = (TermColors.YELLOW, TermColors.END)
         else:
             color_prefix, color_suffix = (TermColors.RED, TermColors.END)
-            color_prefix += f"rc[{rc[0]},{rc[1]}]"
-        print (f"{color_prefix}({p:.2f} {r:.2f} {f1:.2f}){color_suffix}", end =" ")
+            color_prefix += f"rc[{score.rc[0]},{score.rc[1]}]"
+        print (f"{color_prefix}({score.precision:.2f} {score.recall:.2f} {score.f1:.2f}){color_suffix}", end =" ")
     print()
 
-    num_good = np.count_nonzero (np.array(precision_recall_f1_scores[2]) >= 0.5)
-    num_samples = len(precision_recall_f1_scores[0])
+    num_good = np.count_nonzero ([score.rating == Rating.GOOD for score in precision_recall_f1_scores])
+    num_samples = len(precision_recall_f1_scores)
     percentage_good = 100.0*num_good/num_samples
     print (f"Average P,R,F1 over {num_samples} samples {average_precision:.2f}, {average_recall:.2f}, {average_f1:.2f}")
     print (f"Percentage of great results: {percentage_good:.2f}%")
-    return (percentage_good, average_precision, average_recall, average_f1)
+    return Results (percentage_good=percentage_good, average_precision=average_precision, average_recall=average_recall, average_f1=average_f1)
 
-def main_interactive_evaluator(image: Path, json: Path):
+def main_interactive_evaluator(args, image: Path, json: Path):
     evaluator = InteractiveEvaluator()
     # labeled_image = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
     if json is not None:
@@ -200,40 +284,60 @@ def main_interactive_evaluator(image: Path, json: Path):
         image_rgb = labeled_image.rendered_image
     else:
         assert (image)
-        image_rgb = swap_rb(cv2.imread(image, cv2.IMREAD_COLOR))
+        image_rgb = swap_rb(cv2.imread(str(image), cv2.IMREAD_COLOR))
         labeled_image = None
     # finder = HSVFinder(image_rgb, plot_mode=True)
     # labeled_image = None
     # image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLens-Drive/Plots/Bowling.png", cv2.IMREAD_COLOR))
-    finder = DeepRegressionFinder(image_rgb)
+    finder = DeepRegressionFinder(image_rgb, args.model)
     evaluator.process_image (image_rgb, finder, labeled_image)
 
-def main_batch_evaluation ():
-    # im = LabeledImage (Path("inputs/opencv-generated/drawings-test/img-00000-000.json"))
-    im = LabeledImage (Path("inputs/mpl-generated/img-02778.json"))
-    # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
-    im.ensure_images_loaded()
-    im.compute_labels_as_rgb()
-    easy_mode = False
-    # evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=easy_mode)
-    evaluate (im, DeepRegressionFinder(im.rendered_image), easy_mode=easy_mode)
+def main_batch_evaluation (args):
+    test_folders = [Path("inputs/tests/opencv-generated"), Path("inputs/tests/mpl-generated")]
+    result_per_folder = {}
+    for folder in test_folders:    
+        percent_good = []
+        # Take the first 50 images.
+        json_files = itertools.islice(folder.glob('*.json'), 50)
+        for json_file in json_files:
+            im = LabeledImage (Path(json_file))
+            # im = LabeledImage (Path("inputs/mpl-generated/img-02778.json"))
+            # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
+            im.ensure_images_loaded()
+            im.compute_labels_as_rgb()
+            # results = evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=args.easy)
+            results = evaluate (im, DeepRegressionFinder(im.rendered_image, args.model), easy_mode=args.easy)
+            percent_good.append (results.percentage_good)
+        result_per_folder[folder] = np.mean (percent_good)
+    for folder,percent_good in result_per_folder.items():
+        printBold (f"Results for {folder}: {percent_good:.1f}%")
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image', type=Path, default=None)
     parser.add_argument('--json', type=Path, default=None)
     parser.add_argument("--batch", action='store_true')
+    parser.add_argument("--model", type=str, default="regression_unetres_v3_scripted.pt")   
+    parser.add_argument("--easy", action='store_true')
+    parser.add_argument("--debug", action='store_true')    
     args = parser.parse_args()
+
+    global debug
+    debug = args.debug
     
-    zvlog.start (('127.0.0.1', 7007))
+    # zvlog.start (('127.0.0.1', 7007))
 
     if args.batch:
-        main_batch_evaluation ()
+        if args.debug:
+            zvlog.start ()
+        main_batch_evaluation (args)
+        zvlog.waitUntilWindowsAreClosed()
     else:
         if not args.image and not args.json:
             print ("ERROR: need to specify --image or --json")
             sys.exit (1)
-        main_interactive_evaluator(args.image, args.json)
+        zvlog.start ()
+        main_interactive_evaluator(args, args.image, args.json)
 
 if __name__ == "__main__":
     main ()
