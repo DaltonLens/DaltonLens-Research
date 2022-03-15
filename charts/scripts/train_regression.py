@@ -325,10 +325,11 @@ if __name__ == "__main__":
 
     root_dir = Path(__file__).parent.parent
     datasets_path = [
-        root_dir / 'inputs' / 'opencv-generated' / 'drawings',
-        root_dir / 'inputs' / 'mpl-generated',
-        root_dir / 'inputs' / 'mpl-generated-no-antialiasing',
-        root_dir / 'inputs' / 'mpl-generated-scatter',
+        root_dir / 'inputs' / 'train' / 'opencv-generated' / 'drawings',
+        root_dir / 'inputs' / 'train' / 'opencv-generated-background',
+        root_dir / 'inputs' / 'train' / 'mpl-generated',
+        root_dir / 'inputs' / 'train' / 'mpl-generated-no-antialiasing',
+        root_dir / 'inputs' / 'train' / 'mpl-generated-scatter',
     ]
 
     use_cuda = torch.cuda.is_available()

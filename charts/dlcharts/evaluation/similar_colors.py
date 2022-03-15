@@ -282,6 +282,7 @@ def main_batch_evaluation (args):
         Path("inputs/tests/mpl-generated"),
         Path("inputs/tests/mpl-generated-no-antialiasing"),
         Path("inputs/tests/mpl-generated-scatter"),
+        Path("inputs/tests/opencv-generated-background"),
     ]
     result_per_folder = {}
     for folder in test_folders:    
