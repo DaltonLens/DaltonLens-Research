@@ -52,7 +52,7 @@ class ImagePreprocessor:
         return torch.clip(im * 0.5 + 0.5, 0.0, 1.0)
 
     def denormalize_and_clip_as_numpy (self, im: Tensor) -> np.ndarray:
-        return self.denormalize_and_clip_as_tensor(im).permute(1, 2, 0).detach().cpu().numpy()
+        return np.ascontiguousarray(self.denormalize_and_clip_as_tensor(im).permute(1, 2, 0).detach().cpu().numpy())
 
 class ColorRegressionImageDataset(Dataset):
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
@@ -137,8 +137,8 @@ class Processor:
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])
         input_cropped = (input_cropped * 255).astype(np.uint8)
         
-        zvlog.image ("original", input_cropped)
-        zvlog.image ("filtered", output_im)
+        # zvlog.image ("original", input_cropped)
+        # zvlog.image ("filtered", output_im)
         return output_im, input_cropped
 
 if __name__ == "__main__":

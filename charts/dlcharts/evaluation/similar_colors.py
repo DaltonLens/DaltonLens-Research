@@ -154,10 +154,13 @@ class InteractiveEvaluator:
                 label = labeled_image.labels_image[y,x]
                 viewer.addImage ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
         
-        image_id = viewer.addImage ("Input image", np.ascontiguousarray(finder.raw_image_rgb))
+        image_id = viewer.addImage ("Input image", finder.raw_image_rgb)
         viewer.setEventCallback(image_id, event_callback, None)
 
-        viewer.addImage("Filtered", np.ascontiguousarray(finder.image_rgb))
+        viewer.addImage("Filtered", finder.image_rgb)
+
+        viewer.setLayout (1, 3)
+        viewer.runAction (zv.ImageWindowAction.Zoom_Normal)
 
         while app.numViewers > 0:
             app.updateOnce (1.0 / 30.0)
