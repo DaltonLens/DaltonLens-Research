@@ -64,6 +64,7 @@ class EpochMetrics:
     training_loss: float
     val_loss: float
     val_accuracy: float
+    
 class DrawingsData:
     train_dataloader: DataLoader
     val_dataloader: DataLoader
@@ -323,8 +324,11 @@ if __name__ == "__main__":
         zvlog.start (('127.0.0.1', 7007))
 
     root_dir = Path(__file__).parent.parent
-    opencv_dataset_path = root_dir / 'inputs' / 'opencv-generated' / 'drawings'
-    mpl_dataset_path = root_dir / 'inputs' / 'mpl-generated'
+    datasets_path = [
+        root_dir / 'inputs' / 'opencv-generated' / 'drawings',
+        root_dir / 'inputs' / 'mpl-generated',
+        root_dir / 'inputs' / 'mpl-generated-no-antialiasing',
+    ]
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -347,6 +351,6 @@ if __name__ == "__main__":
         loss = args.loss,
     )
 
-    data = DrawingsData([opencv_dataset_path, mpl_dataset_path], params, hparams)
+    data = DrawingsData(datasets_path, params, hparams)
     trainer = RegressionTrainer(params, hparams)
     trainer.train (data)

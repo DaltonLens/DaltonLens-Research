@@ -11,7 +11,7 @@ import time
 
 target_size = (256, 256)
 num_classes_per_image = 4
-threshold_extra_margin = 0
+threshold_extra_margin = 3
 
 Line = namedtuple('Line', ['p1', 'p2', 'thickness'])
 Circle = namedtuple('Circle', ['center', 'radius', 'thickness'])

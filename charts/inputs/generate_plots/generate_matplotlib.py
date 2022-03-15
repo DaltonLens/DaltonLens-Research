@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-from zv.log import zvlog
+import zv
 from dlcharts.common.utils import swap_rb
 
 import argparse
@@ -18,6 +18,9 @@ from pathlib import Path
 from icecream import ic
 from tqdm import tqdm
 
+zvApp = None
+viewer = None
+
 rgen = np.random.default_rng(int(time.time()*1e3))
 
 def parse_command_line():
@@ -25,7 +28,9 @@ def parse_command_line():
     parser.add_argument('output_dir', help='Output folder for the generated images', type=Path)
     parser.add_argument('--debug', help='Toggle visual debugging', default=False, action='store_const', const=True)
     parser.add_argument('--num-images', help='Number of images to generate', default=2, type=int)
-    parser.add_argument('--margin', help='Mask extra margin', default=0, type=int)
+    parser.add_argument('--margin', help='Mask extra margin', default=3, type=int)
+    parser.add_argument('--no-antialiasing', help='Disable anti-aliasing', action='store_true')
+    parser.add_argument('--scatter', help='Generate scatter plots', action='store_true')
     args = parser.parse_args()
     return args
 
@@ -123,7 +128,7 @@ class Func:
     def poly(coeff):
         return np.polynomial.polynomial.Polynomial(coeff)
 
-def generate_plot (cfg: Config):
+def generate_plot (cfg: Config, on_rendered_image_event):
     axes_color = cfg.plots_colors[0]
     plot_colors = cfg.plots_colors
 
@@ -155,7 +160,9 @@ def generate_plot (cfg: Config):
     set_axes_color (axes_color)
     fig,ax = create_fig()
     rendered_im = draw (fig, ax, plot_colors)
-    zvlog.image('Rendered', rendered_im)
+    if viewer:
+        image_id = viewer.addImage ('Rendered', rendered_im)
+        viewer.setEventCallback (image_id, on_rendered_image_event, None)
     plt.close(fig)
 
     set_bg_color((255,255,255))
@@ -182,7 +189,8 @@ def generate_plot (cfg: Config):
         # zvlog.image (f"Visible line {i}", im)
         # zvlog.image(f"mask_{i}", mask2d)
 
-    zvlog.image('labels', labels_image)
+    if viewer:
+        viewer.addImage('labels', labels_image)
 
     jsonEntries = {}
     jsonEntries['size_cols_rows'] = [im.shape[1], im.shape[0]]
@@ -205,16 +213,32 @@ if __name__ == "__main__":
     # Should be started before creating any figure.
     if args.debug:
         # zvlog.start (('127.0.0.1', 7007))
-        zvlog.start ()
+        # zvlog.start ()
+        zvApp = zv.App()
+        zvApp.initialize()
+        viewer = zvApp.getViewer()
 
     plt.ioff()
+
+    if (args.no_antialiasing):
+        mpl.rcParams['text.antialiased'] = False
+        mpl.rcParams['lines.antialiased'] = False
+        mpl.rcParams['patch.antialiased'] = False
 
     if not os.path.isdir(args.output_dir):
         os.makedirs(args.output_dir)
 
+    process_next_image = True
+    def rendered_image_callback(image_id, x, y, user_data):
+        global process_next_image
+        if zv.imgui.IsMouseClicked(zv.imgui.MouseButton.Left, False) and not zv.imgui.IsKeyDown(zv.imgui.Key.LeftCtrl):
+            process_next_image = True
+
     for i in tqdm(range(args.num_images)):
         config = Config()
-        rendered, labels, jsonEntries = generate_plot (config)
+        if viewer:
+            process_next_image = False
+        rendered, labels, jsonEntries = generate_plot (config, rendered_image_callback)
 
         prefix = str(args.output_dir / f"img-{i:05d}")
 
@@ -224,11 +248,17 @@ if __name__ == "__main__":
         with open(prefix + '.json', 'w') as f:
             f.write (json.dumps(jsonEntries))
 
+        if viewer:
+            while not process_next_image and zvApp.numViewers > 0:
+                zvApp.updateOnce(1.0 / 30.0)
+
         # if i % 10 == 0:
         #     breakpoint()
         # time.sleep (0.5)
 
-    zvlog.waitUntilWindowsAreClosed()
+    if viewer:
+        while zvApp.numViewers > 0:
+            zvApp.updateOnce(1.0 / 30.0)
 
     # cv2.imshow ('Test Image', np.random.rand(128,128,3))
     # while True:

@@ -23,8 +23,10 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "--num-images", "200",
+                "--num-images", "10",
+                // "--no-antialiasing",
                 "mpl-generated",
+                "--debug",
             ],
         },
 
@@ -53,8 +55,8 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                // "--batch",
-                "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
+                "--batch",
+                // "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
             ],
         },
     ]

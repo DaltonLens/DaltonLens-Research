@@ -130,18 +130,8 @@ class InteractiveEvaluator:
         app = zv.App()
         app.initialize ()
         viewer = app.getViewer()
+        viewer.setLayout (1, 3)
 
-        # def handle_click(event, x, y, flags, param):
-        #     if event != cv2.EVENT_LBUTTONDOWN:
-        #         return
-        #     mask = finder.similar_colors(x, y)
-        #     zvlog.image ("estimated", bool_image_to_uint8(mask))
-        #     # cv2.imshow ("estimated", bool_image_to_uint8(mask))
-
-        #     if labeled_image is not None:
-        #         label = labeled_image.labels_image[y,x]
-        #         zvlog.image ("ground_truth", bool_image_to_uint8(labeled_image.mask_for_label(label)))
-            
         def event_callback (image_id, x, y, user_data):
             if not zv.imgui.IsMouseClicked(zv.imgui.MouseButton.Left, False):
                 return
@@ -159,17 +149,8 @@ class InteractiveEvaluator:
 
         viewer.addImage("Filtered", finder.image_rgb)
 
-        viewer.setLayout (1, 3)
-        viewer.runAction (zv.ImageWindowAction.Zoom_Normal)
-
         while app.numViewers > 0:
             app.updateOnce (1.0 / 30.0)
-
-        # cv2.namedWindow("image", cv2.WINDOW_NORMAL)
-        # cv2.setMouseCallback("image", handle_click)
-        # cv2.imshow ("image", swap_rb(finder.raw_image_rgb))
-        # while cv2.waitKey(0) != ord('q'):
-        #     pass
 
 @dataclass
 class Score:
@@ -296,7 +277,11 @@ def main_interactive_evaluator(args, image: Path, json: Path):
     evaluator.process_image (image_rgb, finder, labeled_image)
 
 def main_batch_evaluation (args):
-    test_folders = [Path("inputs/tests/opencv-generated"), Path("inputs/tests/mpl-generated")]
+    test_folders = [
+        Path("inputs/tests/opencv-generated"), 
+        Path("inputs/tests/mpl-generated"),
+        Path("inputs/tests/mpl-generated-no-antialiasing"),
+    ]
     result_per_folder = {}
     for folder in test_folders:    
         percent_good = []
