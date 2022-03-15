@@ -82,9 +82,11 @@ class ColorRegressionImageDataset(Dataset):
         if self.transform:
             if self.debug:
                 zvlog.image ("original", image)
+                zvlog.image ("original-labels", labels_image)
             image, labels_image = self.transform(image, labels_image)
             if self.debug:
                 zvlog.image ("augmented", self.preprocessor.denormalize_and_clip_as_numpy(image))
+                zvlog.image ("augmented-labels", self.preprocessor.denormalize_and_clip_as_numpy(labels_image))
         assert (image is not None)
         return image, labels_image, repr(self.labeled_images[idx])
 

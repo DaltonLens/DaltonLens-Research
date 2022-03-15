@@ -1,6 +1,8 @@
 from .utils import debug, swap_rb
 from daltonlens import convert
 
+from zv.log import zvlog
+
 import cv2
 import numpy as np
 
@@ -17,6 +19,7 @@ def Lab_from_sRGB(im_srgb_uint8: np.ndarray):
     linearRGB = convert.linearRGB_from_sRGB (convert.as_float32(im_srgb_uint8))
     xyz = convert.apply_color_matrix(linearRGB, convert.XYZ_from_linearRGB_BT709)
     return convert.Lab_from_XYZ(xyz)
+    
 class LabeledImage:
     def __init__(self, json_file: Path):
         self.json_file = json_file
@@ -27,13 +30,11 @@ class LabeledImage:
         self.labels_image = None
         self.labels_as_rgb = None
         self.rendered_image = None
-        self.rendered_image_bgr = None
         self.labels_quantized_Lab = None
 
     def release_images(self):
         self.labels_image = None
         self.rendered_image = None
-        self.rendered_image_bgr = None
         self.labels_as_rgb = None
         self.labels_quantized_Lab = None
 
@@ -66,10 +67,9 @@ class LabeledImage:
         self.labels_quantized_Lab = labels_lut[self.labels_image]
 
         if debug:
-            cv2.imshow ("label", self.labels_image)
+            zvlog.image ("label", self.labels_image)
             scaled_lab = np.around(np.multiply(self.labels_quantized_Lab, np.array([255/16, 255/8, 255/8]))).astype(np.uint8)
-            cv2.imshow ("labels_quantized_Lab", scaled_lab)
-            cv2.waitKey (0)
+            zvlog.image ("labels_quantized_Lab", scaled_lab)
 
     def compute_labels_as_rgb(self):
         if self.labels_as_rgb is not None:
@@ -84,10 +84,14 @@ class LabeledImage:
             labels_lut[label] = rgb
 
         self.labels_as_rgb = labels_lut[self.labels_image]
+        
+        # Grab the background from the original image.
+        background_mask = self.labels_as_rgb == labels_lut[0]
+        self.labels_as_rgb = np.where(background_mask, self.rendered_image, self.labels_as_rgb)
+
         if debug:
-            cv2.imshow ("label", self.labels_image)
-            cv2.imshow ("label_as_rgb", swap_rb(self.labels_as_rgb))
-            cv2.waitKey (0)
+            zvlog.image ("label", self.labels_image)
+            zvlog.image ("label_as_rgb", swap_rb(self.labels_as_rgb))
 
     def ensure_images_loaded(self):
         if self.labels_image is not None:
@@ -95,9 +99,7 @@ class LabeledImage:
             return
 
         self.labels_image = cv2.imread(str(self.labels_file), cv2.IMREAD_GRAYSCALE)
-        self.rendered_image_bgr = cv2.imread(str(self.rendered_file), cv2.IMREAD_COLOR)
-        # FIXME: this could be optional.
-        self.rendered_image = swap_rb(self.rendered_image_bgr)
+        self.rendered_image = swap_rb(cv2.imread(str(self.rendered_file), cv2.IMREAD_COLOR))
         assert self.rendered_image is not None
 
     def mask_for_label(self, label: int):

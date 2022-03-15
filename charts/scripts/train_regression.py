@@ -73,7 +73,7 @@ class DrawingsData:
         super().__init__()
         self.params = params
         self.hparams = hparams
-        self.preprocessor = cr.ImagePreprocessor(None, target_size=128)
+        self.preprocessor = cr.ImagePreprocessor(None, target_size=192)
         datasets = [cr.ColorRegressionImageDataset(path, self.preprocessor) for path in dataset_path]
         self.dataset = torch.utils.data.ConcatDataset(datasets)
         
@@ -109,7 +109,7 @@ class DrawingsData:
 
         # They are shuffled, so we're fine.
         self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
-        self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(3, n_val))]
+        self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
 
 def regression_accuracy(outputs: torch.Tensor, labels: torch.Tensor):
     diff = torch.abs(outputs-labels)
@@ -211,7 +211,7 @@ class RegressionTrainer:
         if (self.current_epoch > 0
             and self.current_epoch % 10 == 0
             or self.current_epoch == self.params.num_frozen_epochs-1
-            or self.current_epoch == self.params.num_epochs-1:
+            or self.current_epoch == self.params.num_epochs-1):
             self.xp.save_checkpoint(self.current_epoch)
 
         return metrics
