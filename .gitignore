@@ -1,5 +1,6 @@
 charts/inputs/*generated/
 *-generated/
+*-generated-*/
 charts/experiments/
 charts/attic/parse_chart_v2/build/
 

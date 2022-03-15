@@ -23,10 +23,11 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "--num-images", "10",
+                "--num-images", "100",
                 // "--no-antialiasing",
-                "mpl-generated",
-                "--debug",
+                "--scatter",
+                "mpl-generated-scatter",
+                // "--debug",
             ],
         },
 
@@ -40,9 +41,10 @@
             "console": "integratedTerminal",
             "args": [
                 // "--debug",
-                "--num-drawings", "200",
+                "--num-drawings", "5000",
                 "--num-images-per-drawing", "1",
-                "opencv-generated"
+                "--background-dir", "/home/nb/Perso/imagenet/imagenette2",
+                "opencv-generated-background"
             ],
         },
 
@@ -56,6 +58,7 @@
             "console": "integratedTerminal",
             "args": [
                 "--batch",
+                // "--baseline",
                 // "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
             ],
         },

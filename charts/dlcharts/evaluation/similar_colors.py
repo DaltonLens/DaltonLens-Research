@@ -281,6 +281,7 @@ def main_batch_evaluation (args):
         Path("inputs/tests/opencv-generated"), 
         Path("inputs/tests/mpl-generated"),
         Path("inputs/tests/mpl-generated-no-antialiasing"),
+        Path("inputs/tests/mpl-generated-scatter"),
     ]
     result_per_folder = {}
     for folder in test_folders:    
@@ -293,8 +294,10 @@ def main_batch_evaluation (args):
             # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
             im.ensure_images_loaded()
             im.compute_labels_as_rgb()
-            # results = evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=args.easy)
-            results = evaluate (im, DeepRegressionFinder(im.rendered_image, args.model), easy_mode=args.easy)
+            if args.baseline:
+                results = evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=args.easy)
+            else:
+                results = evaluate (im, DeepRegressionFinder(im.rendered_image, args.model), easy_mode=args.easy)
             percent_good.append (results.percentage_good)
         result_per_folder[folder] = np.mean (percent_good)
     for folder,percent_good in result_per_folder.items():
@@ -307,7 +310,8 @@ def main():
     parser.add_argument("--batch", action='store_true')
     parser.add_argument("--model", type=str, default="regression_unetres_v3_scripted.pt")   
     parser.add_argument("--easy", action='store_true')
-    parser.add_argument("--debug", action='store_true')    
+    parser.add_argument("--debug", action='store_true')
+    parser.add_argument("--baseline", action='store_true')
     args = parser.parse_args()
 
     global debug

@@ -95,6 +95,7 @@ def to_mpl_color(rgb):
 class Config:
     def __init__(self):
         self.backend = 'agg'
+        self.scatter = False
         nfuncs = rgen.integers(2,6)
         often_gray_colors = random_rgb_set(2, [], often_grayscale=True)
         self.bg_color = often_gray_colors[0]
@@ -103,7 +104,14 @@ class Config:
         #  [self.axes_color] + [hex_to_color(v['color']) for v in mpl.rcParams['axes.prop_cycle']]        
         self.funcs = [Config.random_func() for v in range(nfuncs)]
         self.linspace_args = (-1,1,rgen.integers(5,100))
+        
+        # linewidth or scatter marker area
         self.linewidth = rgen.uniform(0.5,1.5) if rgen.uniform() < 0.9 else rgen.uniform(1.5,5)
+
+        markers = {'.': 'point', ',': 'pixel', 'o': 'circle', 'v': 'triangle_down', '^': 'triangle_up', '<': 'triangle_left', '>': 'triangle_right', '1': 'tri_down', '2': 'tri_up', '3': 'tri_left', '4': 'tri_right', '8': 'octagon', 's': 'square', 'p': 'pentagon', '*': 'star', 'h': 'hexagon1', 'H': 'hexagon2', '+': 'plus', 'x': 'x', 'D': 'diamond', 'd': 'thin_diamond', '|': 'vline', '_': 'hline', 'P': 'plus_filled', 'X': 'x_filled', 0: 'tickleft', 1: 'tickright', 2: 'tickup', 3: 'tickdown', 4: 'caretleft', 5: 'caretright', 6: 'caretup', 7: 'caretdown', 8: 'caretleftbase', 9: 'caretrightbase', 10: 'caretupbase', 11: 'caretdownbase'}
+        markers = list(markers.keys())
+        self.markers = [markers[rgen.integers(0, len(markers))] for _ in range(nfuncs)]
+
         self.xscale = rgen.uniform(0.01, 100.0)
         self.yscale = rgen.uniform(0.01, 100.0)
         self.xoffset = rgen.uniform(-2, 2)
@@ -142,7 +150,13 @@ def generate_plot (cfg: Config, on_rendered_image_event):
     def draw(fig, ax, colors):
         x = np.linspace(*cfg.linspace_args)
         for i, func in enumerate(cfg.funcs):
-            ax.plot(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset, color=to_mpl_color(colors[i+1]), linewidth=cfg.linewidth)
+            if cfg.scatter:
+                ax.scatter(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset,
+                           marker=cfg.markers[i],
+                           color=to_mpl_color(colors[i+1]),
+                           s=cfg.linewidth)
+            else:
+                ax.plot(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset, color=to_mpl_color(colors[i+1]), linewidth=cfg.linewidth)
         im = image_from_fig(fig)
         assert im.shape[0] == h and im.shape[1] == w
         return im
@@ -236,6 +250,8 @@ if __name__ == "__main__":
 
     for i in tqdm(range(args.num_images)):
         config = Config()
+        config.scatter = args.scatter
+
         if viewer:
             process_next_image = False
         rendered, labels, jsonEntries = generate_plot (config, rendered_image_callback)

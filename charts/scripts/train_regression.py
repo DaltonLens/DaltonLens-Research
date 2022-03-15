@@ -328,6 +328,7 @@ if __name__ == "__main__":
         root_dir / 'inputs' / 'opencv-generated' / 'drawings',
         root_dir / 'inputs' / 'mpl-generated',
         root_dir / 'inputs' / 'mpl-generated-no-antialiasing',
+        root_dir / 'inputs' / 'mpl-generated-scatter',
     ]
 
     use_cuda = torch.cuda.is_available()

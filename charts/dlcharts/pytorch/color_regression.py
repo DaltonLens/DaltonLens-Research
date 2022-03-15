@@ -44,6 +44,7 @@ class ImagePreprocessor:
             transform_list += [
                 segmentation_transforms.RandomCropWithRegressionLabels(target_size),
                 segmentation_transforms.RandomHorizontalFlip(0.5),
+                segmentation_transforms.RandomRotate90(0.2),
             ]
         
         self.transform = segmentation_transforms.Compose(transform_list)
@@ -55,6 +56,8 @@ class ImagePreprocessor:
         return np.ascontiguousarray(self.denormalize_and_clip_as_tensor(im).permute(1, 2, 0).detach().cpu().numpy())
 
 class ColorRegressionImageDataset(Dataset):
+    debug: bool = False
+
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
         self.img_dir = img_dir
         self.preprocessor = preprocessor
@@ -77,9 +80,11 @@ class ColorRegressionImageDataset(Dataset):
         labels_image = labeled_img.labels_as_rgb
         labeled_img.release_images()
         if self.transform:
-            # zvlog.image ("original", image)
+            if self.debug:
+                zvlog.image ("original", image)
             image, labels_image = self.transform(image, labels_image)
-            # zvlog.image ("augmented", self.preprocessor.denormalize_and_clip_as_numpy(image))
+            if self.debug:
+                zvlog.image ("augmented", self.preprocessor.denormalize_and_clip_as_numpy(image))
         assert (image is not None)
         return image, labels_image, repr(self.labeled_images[idx])
 
