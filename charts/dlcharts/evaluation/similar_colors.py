@@ -302,14 +302,15 @@ def main_batch_evaluation (args):
             percent_good.append (results.percentage_good)
         result_per_folder[folder] = np.mean (percent_good)
     for folder,percent_good in result_per_folder.items():
-        printBold (f"Results for {folder}: {percent_good:.1f}%")
+        printBold (f"Results for {folder}: {percent_good:.1f}%")    
+    print (", ".join([f"{p:.1f}" for p in result_per_folder.values()]))
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image', type=Path, default=None)
     parser.add_argument('--json', type=Path, default=None)
     parser.add_argument("--batch", action='store_true')
-    parser.add_argument("--model", type=str, default="regression_unetres_v3_scripted.pt")   
+    parser.add_argument("--model", type=str, default="regression_unetres_v4_scripted.pt")   
     parser.add_argument("--easy", action='store_true')
     parser.add_argument("--debug", action='store_true')
     parser.add_argument("--baseline", action='store_true')
@@ -329,7 +330,8 @@ def main():
         if not args.image and not args.json:
             print ("ERROR: need to specify --image or --json")
             sys.exit (1)
-        zvlog.start ()
+        if debug:
+            zvlog.start ()
         main_interactive_evaluator(args, args.image, args.json)
 
 if __name__ == "__main__":

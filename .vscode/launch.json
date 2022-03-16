@@ -58,8 +58,24 @@
             "console": "integratedTerminal",
             "args": [
                 "--batch",
+                "--model", "regression_unetres_v3_scripted.pt",
                 // "--baseline",
+                "--easy",
                 // "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
+            ],
+        },
+
+        {
+            "name": "Export ONNX",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts",
+            "program": "${workspaceFolder}/charts/scripts/export_to_torchscript.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "${workspaceFolder}/charts/logs/v4_uresnet18-v1-residual_mse_bn32_5e-3/default/checkpoint-00209.pt",
+                "output.scripted.pt"
             ],
         },
     ]
