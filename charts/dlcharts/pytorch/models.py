@@ -1,6 +1,10 @@
+from .layers import ResnetBlock, UnetBlock
+
 import torch
 import torch.nn.functional as F
 from torch import nn
+
+from enum import Enum
 
 import timm
 
@@ -8,59 +12,20 @@ from icecream import ic
 
 from typing import List, Dict
 
-class ResnetBlock (nn.Module):
-    def __init__(self, in_features, out_features, first_stride=1):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(in_features, out_features, kernel_size=3, stride=first_stride, padding=3//2, bias=False),
-            nn.BatchNorm2d(out_features),
-            nn.ReLU(),
-            nn.Conv2d(out_features, out_features, kernel_size=3, stride=1, padding=3//2, bias=False),
-            nn.BatchNorm2d(out_features),
-        )
-
-        self.downsample_x = None
-        if first_stride != 1 or out_features != in_features:
-            self.downsample_x = nn.Sequential(
-                nn.Conv2d(in_features, out_features, kernel_size=1, stride=first_stride),
-                nn.BatchNorm2d(out_features)
-            )
-    
-    def forward(self, x):
-        x_adjusted = x if self.downsample_x is None else self.downsample_x(x)
-        y = self.block(x)
-        return x_adjusted + y
-
-class UnetBlock(nn.Module):
-    def __init__(self, left_features, down_features, out_features):
-        super().__init__()
-        self.block = nn.Sequential(
-            nn.Conv2d(left_features + down_features, down_features, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(down_features),
-            nn.ReLU(),
-
-            nn.Conv2d(down_features, out_features, kernel_size=3, padding=1, bias=False),
-            nn.BatchNorm2d(out_features),
-            nn.ReLU(),
-        )
-
-    def forward(self, left, down):
-        down_upsampled = F.interpolate(down, scale_factor=2.0)
-        x = torch.cat((down_upsampled, left), dim=1)
-        return self.block (x)
-
 class UnetDecoder(nn.Module):
-    def __init__(self, residual_mode):
+    def __init__(self, residual_mode, self_attention, icnr_shuffle):
         super().__init__()
         self.residual_mode = residual_mode
+        self.self_attention = self_attention
+        self.icnr_shuffle = icnr_shuffle
         self.enc0 = ResnetBlock(3, 64)
 
-        self.dec4     = UnetBlock(512,512, out_features=512)
-        self.dec3     = UnetBlock(256,512, out_features=256)
-        self.dec2     = UnetBlock(128,256, out_features=128)
-        self.dec1     = UnetBlock(64,128,  out_features=64)
-        self.dec1_act = UnetBlock(64,64,   out_features=64)
-        self.dec0     = UnetBlock(64,64,   out_features=64)
+        self.dec4     = UnetBlock(512,512, out_features=512, self_attention=self.self_attention, icnr_shuffle=icnr_shuffle)
+        self.dec3     = UnetBlock(256,512, out_features=256, self_attention=self.self_attention, icnr_shuffle=icnr_shuffle)
+        self.dec2     = UnetBlock(128,256, out_features=128, self_attention=self.self_attention, icnr_shuffle=icnr_shuffle)
+        self.dec1     = UnetBlock(64,128,  out_features=64,  self_attention=False, icnr_shuffle=icnr_shuffle)
+        self.dec1_act = UnetBlock(64,64,   out_features=64,  self_attention=False, icnr_shuffle=icnr_shuffle)
+        self.dec0     = UnetBlock(64,64,   out_features=64,  self_attention=False, icnr_shuffle=icnr_shuffle)
 
         self.bottom = nn.Sequential(
             nn.MaxPool2d(2),
@@ -88,10 +53,18 @@ class UnetDecoder(nn.Module):
         )
 
     def set_extra_state(self, state):
-        self.residual_mode = state['residual_mode']
+        # Backward compat, we used to save it as a dictionary.
+        # But this is a problem for ONNX tracing, it needs tensors.
+        if isinstance(state, dict):
+            self.residual_mode = state['residual_mode']            
+        else:
+            values = state.item()
+            self.residual_mode = values[0]
+            self.self_attention = values[1]
+            self.icnr_shuffle = values[2]
 
     def get_extra_state(self):
-        return {'residual_mode': self.residual_mode}
+        return torch.tensor([self.residual_mode, self.self_attention, self.icnr_shuffle])
 
     def forward(self, img, encoded_layers: List[torch.Tensor]):
         act1 = encoded_layers[0]
@@ -114,10 +87,10 @@ class UnetDecoder(nn.Module):
             return self.head(x)
 
 class RegressionNet_UResNet18(nn.Module):
-    def __init__(self, residual_mode = False):
+    def __init__(self, residual_mode=False, self_attention=False, icnr_shuffle=False):
         super().__init__()
-        self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True, scriptable=True)
-        self.decoder = UnetDecoder(residual_mode)
+        self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True, scriptable=True, exportable=True)
+        self.decoder = UnetDecoder(residual_mode, self_attention, icnr_shuffle)
         # {'module': 'act1', 'num_chs': 64, 'reduction': 2},
         # {'module': 'layer1', 'num_chs': 64, 'reduction': 4},
         # {'module': 'layer2', 'num_chs': 128, 'reduction': 8},
@@ -144,8 +117,15 @@ class RegressionNet_UResNet18(nn.Module):
 
 def create_regression_model(name):
     model = None
-    if name == 'uresnet18-v1':
-        model = RegressionNet_UResNet18()
-    elif name == 'uresnet18-v1-residual':
+    if name == 'uresnet18-no-residual':
+        model = RegressionNet_UResNet18(residual_mode=False)
+    elif name == 'uresnet18':
         model = RegressionNet_UResNet18(residual_mode=True)
+    elif name == 'uresnet18-shuffle':
+        model = RegressionNet_UResNet18(residual_mode=True, icnr_shuffle=True)
+    elif name == 'uresnet18-sa':
+        model = RegressionNet_UResNet18(residual_mode=True, self_attention=True)
+    elif name == 'uresnet18-sa-shuffle':
+        model = RegressionNet_UResNet18(residual_mode=True, self_attention=True, icnr_shuffle=True)
+    assert model
     return model

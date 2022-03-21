@@ -22,7 +22,7 @@ def quick_validate():
 
             "--validate",
 
-            "--model", "uresnet18-v1-residual"
+            "--model", "uresnet18"
         ], check=True)
 
 def cartesian_product (params: Dict[str,List]):
@@ -56,14 +56,16 @@ if __name__ == "__main__":
     # sys.exit(0)
 
     # params_set = dict(
-    #     model=["uresnet18-v1", "uresnet18-v1-residual"],
+    #     model=["uresnet18", "uresnet18-sa"],
     #     decoder_lr=["5e-3", "1e-3", "1e-4"],
     #     batch_size = ["32", "64", "128"]
     #     loss = ["mse", "l1"]
     # )
 
     params_set = dict(
-        model=["uresnet18-v1-residual"],
+        model=["uresnet18-no-residual", "uresnet18", "uresnet18-sa", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
+        # model=["uresnet18-sa-shuffle"],
+        encoder_lr=["1e-5"] # , "1e-4"],
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"]
@@ -82,20 +84,20 @@ if __name__ == "__main__":
                 # v4 is the input data / data augmentation version.
                 f"v4_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}",
                 
-                # "--clean_previous",
+                "--clean_previous",
                 
                 "--model", p.model,
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,
-                "--encoder_lr", "1e-5",
+                "--encoder_lr", p.encoder_lr,
                 "--loss", p.loss,
 
                 "--epochs_decoder_only", "10",
-                "--epochs_finetune", "200",
+                "--epochs_finetune", "100",
 
                 # TEMP!
-                # "--debug",
-                # "--validate",
-                # "--overfit", "1",
-                # "--batch_size", "4",
+                "--debug",
+                "--validate",
+                "--overfit", "1",
+                "--batch_size", "4",
             ], check=True)

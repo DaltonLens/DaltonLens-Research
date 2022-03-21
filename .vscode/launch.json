@@ -5,6 +5,16 @@
     "version": "0.2.0",
     "configurations": [
         {
+            "name": "Python: Current File",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "justMyCode": false
+        },
+
+        {
             "name": "Next Train",
             "type": "python",
             "request": "launch",
@@ -13,7 +23,6 @@
             "console": "integratedTerminal",
             "justMyCode": false,
         },
-
         {
             "name": "Generate Matplotlib",
             "type": "python",
@@ -23,14 +32,14 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "--num-images", "100",
+                "--num-images",
+                "100",
                 // "--no-antialiasing",
                 "--scatter",
                 "mpl-generated-scatter",
                 // "--debug",
             ],
         },
-
         {
             "name": "Generate OpenCV",
             "type": "python",
@@ -41,13 +50,15 @@
             "console": "integratedTerminal",
             "args": [
                 // "--debug",
-                "--num-drawings", "5000",
-                "--num-images-per-drawing", "1",
-                "--background-dir", "/home/nb/Perso/imagenet/imagenette2",
+                "--num-drawings",
+                "5000",
+                "--num-images-per-drawing",
+                "1",
+                "--background-dir",
+                "/home/nb/Perso/imagenet/imagenette2",
                 "opencv-generated-background"
             ],
         },
-
         {
             "name": "Evaluate",
             "type": "python",
@@ -58,13 +69,13 @@
             "console": "integratedTerminal",
             "args": [
                 "--batch",
-                "--model", "regression_unetres_v3_scripted.pt",
+                "--model",
+                "regression_unetres_v3_scripted.pt",
                 // "--baseline",
                 "--easy",
                 // "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
             ],
         },
-
         {
             "name": "Export ONNX",
             "type": "python",
@@ -74,7 +85,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "${workspaceFolder}/charts/logs/v4_uresnet18-v1-residual_mse_bn32_5e-3/default/checkpoint-00209.pt",
+                "${workspaceFolder}/charts/logs-archive/v4_uresnet18-no-residual_mse_bn32_5e-3/default/checkpoint-00209.pt",
                 "output.scripted.pt"
             ],
         },

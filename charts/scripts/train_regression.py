@@ -41,7 +41,7 @@ class Hparams:
     batch_size: int = 4
     encoder_lr: float = 1e-5
     decoder_lr: float = 1e-3
-    regression_model: str = 'uresnet18-v1'
+    regression_model: str = 'invalid'
     loss: str = 'mse'
 
 @dataclass
@@ -125,6 +125,8 @@ class RegressionTrainer:
         self.params = params
         self.model = dlcharts.pytorch.models.create_regression_model(hparams.regression_model)
         
+        ic (num_trainable_parameters (self.model))
+
         self.device = self.params.device
 
         logs_root_dir = dlcharts.pytorch.utils.default_output_dir
@@ -166,6 +168,8 @@ class RegressionTrainer:
             metrics = self._train_one_epoch (e)
             pbar.set_postfix({'mode': 'finetune', 'train_loss': metrics.training_loss, 'val_loss': metrics.val_loss, 'val_acc': metrics.val_accuracy})
             pbar.update()
+
+        self.xp.finalize (vars(self.hparams), dict(acc=metrics.val_accuracy))
 
     def _train_one_epoch(self, current_epoch) -> EpochMetrics:
         self.current_epoch = current_epoch
@@ -218,7 +222,7 @@ class RegressionTrainer:
             
     def _compute_monitored_images(self):
         def log_and_save(name, im):
-            im = (im*255.99).astype(np.uint8)
+            im = (im*255.9999).astype(np.uint8)
             zvlog.image(name, im)
             # opencv expects bgr
             cv2.imwrite(str(self.xp.log_path / (name + '.png')), swap_rb(im))
@@ -306,7 +310,7 @@ def parse_command_line():
 
     parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
 
-    parser.add_argument("--model", type=str, default="uresnet18-v1")
+    parser.add_argument("--model", type=str, default="uresnet18")
     parser.add_argument("--decoder_lr", type=float, default=1e-3)
     parser.add_argument("--encoder_lr", type=float, default=1e-4)
     parser.add_argument("--loss", type=str, default="mse")
@@ -351,6 +355,7 @@ if __name__ == "__main__":
         encoder_lr = args.encoder_lr,
         decoder_lr = args.decoder_lr,
         loss = args.loss,
+        regression_model = args.model,
     )
 
     data = DrawingsData(datasets_path, params, hparams)

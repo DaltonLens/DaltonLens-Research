@@ -8,6 +8,7 @@ charts/attic/parse_chart_v2/build/
 
 lightning_logs/
 logs/
+logs-archive/
 __pycache__/
 .ipynb_checkpoints/
 build/
