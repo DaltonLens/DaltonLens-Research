@@ -114,7 +114,7 @@ class DrawingsData:
 def regression_accuracy(outputs: torch.Tensor, labels: torch.Tensor):
     diff = torch.abs(outputs-labels)
     max_diff = torch.max(diff, dim=1)[0]
-    num_good = torch.count_nonzero(max_diff < ((20/255.0)*2.0))
+    num_good = torch.count_nonzero(max_diff < (20/255.0))
     num_pixels = max_diff.numel()
     accuracy = num_good / num_pixels
     return accuracy

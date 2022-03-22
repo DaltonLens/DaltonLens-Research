@@ -63,9 +63,11 @@ if __name__ == "__main__":
     # )
 
     params_set = dict(
-        model=["uresnet18-no-residual", "uresnet18", "uresnet18-sa", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
+        # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
+        model=["uresnet18-sa", "uresnet18"],
         # model=["uresnet18-sa-shuffle"],
-        encoder_lr=["1e-5"] # , "1e-4"],
+        encoder_lr=["1e-5", "1e-4"],
+        # encoder_lr=["1e-4"],
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"]
@@ -82,10 +84,8 @@ if __name__ == "__main__":
             subprocess.run([
                 "python3", "scripts/train_regression.py",
                 # v4 is the input data / data augmentation version.
-                f"v4_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}",
-                
-                "--clean_previous",
-                
+                f"v4_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
+                               
                 "--model", p.model,
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,
@@ -96,8 +96,9 @@ if __name__ == "__main__":
                 "--epochs_finetune", "100",
 
                 # TEMP!
-                "--debug",
-                "--validate",
-                "--overfit", "1",
-                "--batch_size", "4",
+                # "--clean_previous",
+                # "--debug",
+                # "--validate",
+                # "--overfit", "1",
+                # "--batch_size", "4",
             ], check=True)
