@@ -123,9 +123,7 @@ class RegressionTrainer:
     def __init__(self, params: Params, hparams: Hparams):
         self.hparams = hparams
         self.params = params
-        self.model = dlcharts.pytorch.models.create_regression_model(hparams.regression_model)
-        
-        ic (num_trainable_parameters (self.model))
+        self.model = dlcharts.pytorch.models.create_regression_model(hparams.regression_model)            
 
         self.device = self.params.device
 
@@ -155,6 +153,7 @@ class RegressionTrainer:
         self.xp.prepare ("default", self.model, self.optimizer, schedulers, self.device, sample_input)
 
         self.model.freeze_encoder()
+        print (f"Encoder frozen: {num_trainable_parameters (self.model)} params.")
         self.current_scheduler = frozen_scheduler
         pbar = tqdm(range(self.xp.first_epoch, self.params.num_epochs))
         for e in range(self.xp.first_epoch, self.params.num_frozen_epochs):
@@ -163,6 +162,7 @@ class RegressionTrainer:
             pbar.update()
 
         self.model.unfreeze_encoder()
+        print (f"Encoder trainable: {num_trainable_parameters (self.model)} params.")
         self.current_scheduler = finetune_scheduler
         for e in range(max(self.xp.first_epoch, self.params.num_frozen_epochs), self.params.num_epochs):
             metrics = self._train_one_epoch (e)
