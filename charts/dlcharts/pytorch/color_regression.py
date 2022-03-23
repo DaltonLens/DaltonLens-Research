@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 
+from collections import namedtuple
 from ..common.dataset import LabeledImage
 from . import segmentation_transforms
+from .segmentation_transforms import ApplyOnAll, ApplyOnFloatOnly
 
 from zv.log import zvlog
 
@@ -22,23 +24,32 @@ import cv2
 
 import numpy as np
 
-from pathlib import Path
-import sys
-
 from ..common.utils import swap_rb
 
 from icecream import ic
 
-from typing import List
+from dataclasses import dataclass
+from pathlib import Path
+import sys
+import typing
+from typing import List, NamedTuple, Dict
 
 class ImagePreprocessor:   
+    class ToTensor:
+        def __init__(self):
+            self.to_tensor = transforms.ToTensor()
+
+        def __call__(self, images: List):
+            assert len(images) == 3
+            return [self.to_tensor(images[0]), self.to_tensor(images[1]), torch.from_numpy(images[2])]
+
     def __init__(self, device: torch.device, target_size: int = None):
-        Both = segmentation_transforms.ApplyOnBoth
+
         self.device = device
         transform_list = [
-            Both(transforms.ToTensor()),
+            self.ToTensor(),
             # Both(transforms.Lambda(lambda x: x.to(device))),
-            Both(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
+            ApplyOnFloatOnly(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         ]
         if target_size is not None:
             transform_list += [
@@ -55,7 +66,24 @@ class ImagePreprocessor:
     def denormalize_and_clip_as_numpy (self, im: Tensor) -> np.ndarray:
         return np.ascontiguousarray(self.denormalize_and_clip_as_tensor(im).permute(1, 2, 0).detach().cpu().numpy())
 
+
+
 class ColorRegressionImageDataset(Dataset):
+    class Sample(NamedTuple):
+        image: torch.FloatTensor
+        labels_rgb: torch.FloatTensor
+        labels_mask: torch.ByteTensor
+        labels_json: Dict
+        source: str
+
+        def to(self, device: torch.device):
+            return ColorRegressionImageDataset.Sample(
+                image=self.image.to(device), 
+                labels_rgb=self.labels_rgb.to(device),
+                labels_mask=self.labels_mask.to(device),
+                labels_json=self.labels_json,
+                source=self.source)
+
     debug: bool = False
 
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
@@ -72,23 +100,31 @@ class ColorRegressionImageDataset(Dataset):
     def __len__(self):
         return min(self.max_length, len(self.labeled_images))
 
-    def __getitem__(self, idx):
+    def __getitem__(self, idx) -> Sample:
         labeled_img = self.labeled_images[idx]
         labeled_img.ensure_images_loaded()
         labeled_img.compute_labels_as_rgb()
         image = labeled_img.rendered_image
         labels_image = labeled_img.labels_as_rgb
+        labels_mask = labeled_img.labels_image
+        labels_json = labeled_img.json
         labeled_img.release_images()
         if self.transform:
             if self.debug:
                 zvlog.image ("original", image)
-                zvlog.image ("original-labels", labels_image)
-            image, labels_image = self.transform(image, labels_image)
+                zvlog.image ("original-labels-rgb", labels_image)
+                zvlog.image ("original-labels-mask", labels_mask)
+            image, labels_image, labels_mask = self.transform([image, labels_image, labels_mask])
             if self.debug:
                 zvlog.image ("augmented", self.preprocessor.denormalize_and_clip_as_numpy(image))
                 zvlog.image ("augmented-labels", self.preprocessor.denormalize_and_clip_as_numpy(labels_image))
+                zvlog.image ("augmented-labels-mask", labels_mask.detach().numpy())
         assert (image is not None)
-        return image, labels_image, repr(self.labeled_images[idx])
+        return self.Sample(image=image,
+                           labels_rgb=labels_image,
+                           labels_mask=labels_mask,
+                           labels_json=labels_json,
+                           source=repr(self.labeled_images[idx]))
 
     def __repr__(self):
         return f"{len(self)} images, first is {self.labeled_images[0]}, last is {self.labeled_images[-1]}"

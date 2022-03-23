@@ -7,6 +7,7 @@ import torch
 from torchvision import transforms as T
 from torchvision.transforms import functional as F
 
+from typing import List
 
 def pad_if_smaller(img, size, fill=0):
     min_size = min(img.size()[-2:])
@@ -21,20 +22,25 @@ class RandomCropWithRegressionLabels:
     def __init__(self, size):
         self.size = size
 
-    def __call__(self, image, target):
-        image = pad_if_smaller(image, self.size)
-        target = pad_if_smaller(target, self.size, fill=255)
-        crop_params = T.RandomCrop.get_params(image, (self.size, self.size))
-        image = F.crop(image, *crop_params)
-        target = F.crop(target, *crop_params)
-        return image, target
+    def __call__(self, images):
+        images = [pad_if_smaller(image, self.size) for image in images]
+        crop_params = T.RandomCrop.get_params(images[0], (self.size, self.size))
+        outputs = [F.crop(image, *crop_params) for image in images]
+        return outputs
 
-class ApplyOnBoth:
+class ApplyOnAll:
     def __init__(self, image_transform):
         self.image_transform = image_transform
     
-    def __call__(self, image, target):
-        return tuple(map(self.image_transform, (image, target)))
+    def __call__(self, images: List[torch.Tensor]):
+        return map(self.image_transform, images)
+
+class ApplyOnFloatOnly:
+    def __init__(self, image_transform):
+        self.image_transform = lambda x: image_transform(x) if x.is_floating_point() else x
+    
+    def __call__(self, images: List[torch.Tensor]):
+        return map(self.image_transform, images)
 
 class Normalize:
     def __init__(self, mean, std):
@@ -49,10 +55,10 @@ class Compose:
     def __init__(self, transforms):
         self.transforms = transforms
 
-    def __call__(self, image, target):
+    def __call__(self, images: List[torch.Tensor]):
         for t in self.transforms:
-            image, target = t(image, target)
-        return image, target
+            images = t(images)
+        return images
 
 
 class RandomResize:
@@ -72,22 +78,19 @@ class RandomRotate90:
     def __init__(self, rotate_prob):
         self.rotate_prob = rotate_prob
 
-    def __call__(self, image, target):
-        if random.random() < self.rotate_prob:
-            image = image.permute(0,2,1)
-            target = target.permute(0,2,1)
-        return image, target
+    def __call__(self, images: List[torch.Tensor]):
+        if random.random() >= self.rotate_prob:
+            return images
+        return [image.transpose(-2,-1) for image in images]
 
 class RandomHorizontalFlip:
     def __init__(self, flip_prob):
         self.flip_prob = flip_prob
 
-    def __call__(self, image, target):
-        if random.random() < self.flip_prob:
-            image = F.hflip(image)
-            target = F.hflip(target)
-        return image, target
-
+    def __call__(self, images: List):
+        if random.random() >= self.flip_prob:
+            return images
+        return [F.hflip(image) for image in images]
 
 class RandomCrop:
     def __init__(self, size):

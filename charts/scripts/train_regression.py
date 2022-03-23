@@ -34,6 +34,8 @@ from tqdm import tqdm
 
 from zv.log import zvlog
 
+Sample = cr.ColorRegressionImageDataset.Sample
+
 DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
 @dataclass
@@ -148,7 +150,7 @@ class RegressionTrainer:
         frozen_scheduler = self._create_scheduler(data, frozen=True)
         finetune_scheduler = self._create_scheduler(data, frozen=False)
 
-        sample_input = data.dataset[0][0].unsqueeze(0).to(self.device)
+        sample_input = data.dataset[0].labels_rgb.unsqueeze(0).to(self.device)
         schedulers = dict(frozen_scheduler=frozen_scheduler,finetune_scheduler=finetune_scheduler)
         self.xp.prepare ("default", self.model, self.optimizer, schedulers, self.device, sample_input)
 
@@ -181,11 +183,12 @@ class RegressionTrainer:
         val_batch_iterator = InfiniteIterator(self.data.val_dataloader)
 
         pbar = tqdm(self.data.train_dataloader, position=1, leave=False)
+        batch: Sample
         for batch_idx, batch in enumerate(pbar):
-            self.global_step = current_epoch * num_batches + batch_idx
-            
-            outputs, inputs, labels, json_files = self._evaluate_batch (batch)
-            loss = self.loss_fn(outputs, labels)
+            self.global_step = current_epoch * num_batches + batch_idx            
+            batch = batch.to(self.device)
+            outputs = self._evaluate_batch (batch)
+            loss = self.loss_fn(outputs, batch.labels_rgb)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -194,7 +197,7 @@ class RegressionTrainer:
 
             if batch_idx % 10 == 0:
                 with torch.no_grad():
-                    accuracy = self.accuracy_fn(outputs, labels)
+                    accuracy = self.accuracy_fn(outputs, batch.labels_rgb)
                 self.xp.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)
                 self.xp.writer.add_scalars('accuracy_iter', dict(train=accuracy), self.global_step)
 
@@ -231,11 +234,13 @@ class RegressionTrainer:
             inputs = []
             outputs = []
             targets = []
+            sample: Sample
             for idx, sample in enumerate(sample_list):
-                output, input, target, json_files = self._evaluate_single_item (sample)
-                inputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(input.detach().cpu()))
+                sample_device = sample.to(self.device)
+                output = self._evaluate_single_item (sample_device)
+                inputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(sample_device.image.detach().cpu()))
                 outputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(output.detach().cpu()))
-                targets.append(self.data.preprocessor.denormalize_and_clip_as_tensor(target.detach().cpu()))
+                targets.append(self.data.preprocessor.denormalize_and_clip_as_tensor(sample_device.labels_rgb.detach().cpu()))
             epoch = self.current_epoch
             for idx in range(0, len(outputs)):                
                 log_and_save (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
@@ -250,33 +255,32 @@ class RegressionTrainer:
 
     def _compute_batch_validation(self, val_batch_iterator):
         with evaluating(self.model), torch.no_grad():
-            outputs, inputs, labels, json_files = self._evaluate_batch (next(val_batch_iterator))
-            val_loss = self.loss_fn(outputs, labels)
-            val_accuracy = self.accuracy_fn(outputs, labels)
+            batch: Sample = next(val_batch_iterator).to(self.device)
+            outputs = self._evaluate_batch (batch)
+            val_loss = self.loss_fn(outputs, batch.labels_rgb)
+            val_accuracy = self.accuracy_fn(outputs, batch.labels_rgb)
             self.xp.writer.add_scalars('loss_iter', dict(val=val_loss), self.global_step)
             self.xp.writer.add_scalars('accuracy_iter', dict(train=val_accuracy), self.global_step)
 
-    def _evaluate_batch(self, batch):
-        inputs, labels, json_files = batch
-        inputs, labels = inputs.to(self.device), labels.to(self.device)
-        outputs = self.model(inputs)
-        return outputs, inputs, labels, json_files
+    def _evaluate_batch(self, batch: Sample):
+        outputs = self.model(batch.image.to(self.device))
+        return outputs
 
     def _evaluate_single_item(self, item):
-        inputs, labels, json_files = item
-        inputs, labels = inputs.to(self.device), labels.to(self.device)
-        outputs = self.model(inputs.unsqueeze(0)).squeeze(0)
-        return outputs, inputs, labels, json_files
+        outputs = self.model(item.image.to(self.device).unsqueeze(0)).squeeze(0)
+        return outputs
 
     def _compute_epoch_validation(self):
         with evaluating(self.model), torch.no_grad():
             cumulated_val_loss = torch.tensor(0.)
             cumulated_val_accuracy = torch.tensor(0.)
             num_batches = len(self.data.val_dataloader)
+            batch: Sample
             for batch in self.data.val_dataloader:
-                outputs, inputs, labels, json_files = self._evaluate_batch (batch)
-                cumulated_val_loss += self.loss_fn(outputs, labels).cpu()
-                cumulated_val_accuracy += self.accuracy_fn(outputs, labels).cpu()
+                batch = batch.to(self.device)
+                outputs = self._evaluate_batch (batch)
+                cumulated_val_loss += self.loss_fn(outputs, batch.labels_rgb).cpu()
+                cumulated_val_accuracy += self.accuracy_fn(outputs, batch.labels_rgb).cpu()
             val_loss = cumulated_val_loss / num_batches
             val_accuracy = cumulated_val_accuracy / num_batches
             
