@@ -15,12 +15,16 @@ def quick_validate():
     subprocess.run([
             "python3", "scripts/train_regression.py",
             f"quick",
-            
+
+            "--loss", "weighted_mse",
+
             "--clean_previous",
 
             "--batch_size", "4",
 
             "--validate",
+
+            "--debug",
 
             "--model", "uresnet18"
         ], check=True)
@@ -66,12 +70,11 @@ if __name__ == "__main__":
         # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
         model=["uresnet18-sa", "uresnet18"],
         # model=["uresnet18-sa-shuffle"],
-        encoder_lr=["1e-5", "1e-4"],
-        # encoder_lr=["1e-4"],
+        encoder_lr=["1e-5"],
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"]
-        loss = ["mse"]
+        loss = ["mse", "weighted_mse"]
     )
    
     # [dict1, dict2, ...]
@@ -96,9 +99,9 @@ if __name__ == "__main__":
                 "--epochs_finetune", "100",
 
                 # TEMP!
-                # "--clean_previous",
                 # "--debug",
-                # "--validate",
-                # "--overfit", "1",
-                # "--batch_size", "4",
+                "--clean_previous",
+                "--validate",
+                "--overfit", "1",
+                "--batch_size", "4",
             ], check=True)

@@ -65,7 +65,8 @@ class Params:
 class EpochMetrics:
     training_loss: float
     val_loss: float
-    val_accuracy: float
+    val_fg_accuracy: float
+    val_bg_accuracy: float
     
 class DrawingsData:
     train_dataloader: DataLoader
@@ -113,13 +114,42 @@ class DrawingsData:
         self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
         self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
 
-def regression_accuracy(outputs: torch.Tensor, labels: torch.Tensor):
-    diff = torch.abs(outputs-labels)
+def regression_accuracy(outputs: torch.FloatTensor, batch: Sample):
+    diff = torch.abs(outputs-batch.labels_rgb)
     max_diff = torch.max(diff, dim=1)[0]
-    num_good = torch.count_nonzero(max_diff < (20/255.0))
+    
+    # Very important to call numel on the image with one channel,
+    # otherwise it'll be x3.
     num_pixels = max_diff.numel()
-    accuracy = num_good / num_pixels
-    return accuracy
+
+    good_values = (max_diff < (20/255.0))
+    fg_mask = batch.labels_mask > 0
+    num_fg_pixels = torch.count_nonzero(fg_mask)
+    num_bg_pixels = num_pixels - num_fg_pixels
+    fg_good = torch.logical_and (good_values, fg_mask)
+    acc_fg = torch.count_nonzero(fg_good) / num_fg_pixels
+
+    bg_good = torch.logical_and (good_values, torch.logical_not(fg_mask))
+    acc_bg = torch.count_nonzero(bg_good) / num_bg_pixels
+    return torch.tensor([acc_fg, acc_bg])
+
+def weighted_loss(loss_fn):
+    def loss(outputs: torch.FloatTensor, batch: Sample):
+        raw_loss = loss_fn(outputs, batch.labels_rgb)
+        # 1 for bg, 10 for foreground
+        # Typical ratio in our training images is more like 2x
+        # more background. But does not hurt to make it even stronger
+        # for the foreground, since this is the hard part.
+        weights = (batch.labels_mask > 0).float() * 10.0 + 1.0
+        weighted_loss = raw_loss * weights.unsqueeze(1) # add the channel dimension to broadcast
+        loss_scalar = torch.mean (weighted_loss)
+        return loss_scalar
+    return loss
+
+def uniform_loss(loss_fn):
+    def loss (outputs: torch.FloatTensor, batch: Sample):
+        return loss_fn(outputs, batch.labels_rgb)
+    return loss
 
 class RegressionTrainer:
     def __init__(self, params: Params, hparams: Hparams):
@@ -136,8 +166,9 @@ class RegressionTrainer:
                              clear_top_folder=params.clear_top_folder)
 
         losses = dict(
-            mse = nn.MSELoss(),
-            l1 = nn.L1Loss()
+            mse = uniform_loss(nn.MSELoss()),
+            l1 = uniform_loss(nn.L1Loss()),
+            weighted_mse = weighted_loss(nn.MSELoss(reduction='none')),
         )
         self.loss_fn = losses[hparams.loss]
         self.accuracy_fn = regression_accuracy
@@ -160,7 +191,13 @@ class RegressionTrainer:
         pbar = tqdm(range(self.xp.first_epoch, self.params.num_epochs))
         for e in range(self.xp.first_epoch, self.params.num_frozen_epochs):
             metrics = self._train_one_epoch (e)
-            pbar.set_postfix({'mode': 'decoder-only', 'train_loss': metrics.training_loss, 'val_loss': metrics.val_loss, 'val_acc': metrics.val_accuracy})
+            pbar.set_postfix({
+                'mode': 'decoder-only', 
+                'train_loss': metrics.training_loss, 
+                'val_loss': metrics.val_loss, 
+                'val_acc_fg': metrics.val_fg_accuracy,
+                'val_acc_bg': metrics.val_bg_accuracy
+            })
             pbar.update()
 
         self.model.unfreeze_encoder()
@@ -168,10 +205,15 @@ class RegressionTrainer:
         self.current_scheduler = finetune_scheduler
         for e in range(max(self.xp.first_epoch, self.params.num_frozen_epochs), self.params.num_epochs):
             metrics = self._train_one_epoch (e)
-            pbar.set_postfix({'mode': 'finetune', 'train_loss': metrics.training_loss, 'val_loss': metrics.val_loss, 'val_acc': metrics.val_accuracy})
+            pbar.set_postfix({
+                'mode': 'finetune', 
+                'train_loss': metrics.training_loss, 
+                'val_loss': metrics.val_loss, 
+                'val_acc_fg': metrics.val_fg_accuracy, 
+                'val_acc_bg': metrics.val_bg_accuracy})
             pbar.update()
 
-        self.xp.finalize (vars(self.hparams), dict(acc=metrics.val_accuracy))
+        self.xp.finalize (vars(self.hparams), dict(acc_fg=metrics.val_fg_accuracy, acc_bg=metrics.val_bg_accuracy))
 
     def _train_one_epoch(self, current_epoch) -> EpochMetrics:
         self.current_epoch = current_epoch
@@ -188,7 +230,7 @@ class RegressionTrainer:
             self.global_step = current_epoch * num_batches + batch_idx            
             batch = batch.to(self.device)
             outputs = self._evaluate_batch (batch)
-            loss = self.loss_fn(outputs, batch.labels_rgb)
+            loss = self.loss_fn(outputs, batch)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -197,9 +239,10 @@ class RegressionTrainer:
 
             if batch_idx % 10 == 0:
                 with torch.no_grad():
-                    accuracy = self.accuracy_fn(outputs, batch.labels_rgb)
+                    fg_bg_accuracy = self.accuracy_fn(outputs, batch)
                 self.xp.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)
-                self.xp.writer.add_scalars('accuracy_iter', dict(train=accuracy), self.global_step)
+                self.xp.writer.add_scalars('accuracy_iter_fg', dict(train=fg_bg_accuracy[0]), self.global_step)
+                self.xp.writer.add_scalars('accuracy_iter_bg', dict(train=fg_bg_accuracy[1]), self.global_step)
 
             if batch_idx % 20 == 0:
                 self._compute_batch_validation(val_batch_iterator)
@@ -210,8 +253,11 @@ class RegressionTrainer:
         train_loss_epoch = cumulated_train_loss / num_batches
         self.xp.writer.add_scalars('loss_epoch', dict(train=train_loss_epoch), current_epoch)
 
-        epoch_val_loss, epoch_val_accuracy = self._compute_epoch_validation()
-        metrics = EpochMetrics(training_loss=train_loss_epoch.item(), val_loss=epoch_val_loss.item(), val_accuracy=epoch_val_accuracy.item())
+        epoch_val_loss, epoch_val_fg_bg_accuracy = self._compute_epoch_validation()
+        metrics = EpochMetrics(training_loss=train_loss_epoch.item(),
+                               val_loss=epoch_val_loss.item(),
+                               val_fg_accuracy=epoch_val_fg_bg_accuracy[0].item(),
+                               val_bg_accuracy=epoch_val_fg_bg_accuracy[1].item())
 
         self._compute_monitored_images()
 
@@ -257,10 +303,11 @@ class RegressionTrainer:
         with evaluating(self.model), torch.no_grad():
             batch: Sample = next(val_batch_iterator).to(self.device)
             outputs = self._evaluate_batch (batch)
-            val_loss = self.loss_fn(outputs, batch.labels_rgb)
-            val_accuracy = self.accuracy_fn(outputs, batch.labels_rgb)
+            val_loss = self.loss_fn(outputs, batch)
+            val_fg_bg_accuracy = self.accuracy_fn(outputs, batch)
             self.xp.writer.add_scalars('loss_iter', dict(val=val_loss), self.global_step)
-            self.xp.writer.add_scalars('accuracy_iter', dict(train=val_accuracy), self.global_step)
+            self.xp.writer.add_scalars('accuracy_iter_fg', dict(val=val_fg_bg_accuracy[0]), self.global_step)
+            self.xp.writer.add_scalars('accuracy_iter_bg', dict(val=val_fg_bg_accuracy[1]), self.global_step)
 
     def _evaluate_batch(self, batch: Sample):
         outputs = self.model(batch.image.to(self.device))
@@ -273,20 +320,21 @@ class RegressionTrainer:
     def _compute_epoch_validation(self):
         with evaluating(self.model), torch.no_grad():
             cumulated_val_loss = torch.tensor(0.)
-            cumulated_val_accuracy = torch.tensor(0.)
+            cumulated_val_fg_bg_accuracy = torch.tensor([0.,0.])
             num_batches = len(self.data.val_dataloader)
             batch: Sample
             for batch in self.data.val_dataloader:
                 batch = batch.to(self.device)
                 outputs = self._evaluate_batch (batch)
-                cumulated_val_loss += self.loss_fn(outputs, batch.labels_rgb).cpu()
-                cumulated_val_accuracy += self.accuracy_fn(outputs, batch.labels_rgb).cpu()
+                cumulated_val_loss += self.loss_fn(outputs, batch).cpu()
+                cumulated_val_fg_bg_accuracy += self.accuracy_fn(outputs, batch).cpu()
             val_loss = cumulated_val_loss / num_batches
-            val_accuracy = cumulated_val_accuracy / num_batches
+            val_fg_bg_accuracy = cumulated_val_fg_bg_accuracy / num_batches
             
             self.xp.writer.add_scalars('loss_epoch', dict(val=val_loss), self.current_epoch)
-            self.xp.writer.add_scalars('accuracy_epoch', dict(val=val_accuracy), self.current_epoch)
-            return val_loss, val_accuracy
+            self.xp.writer.add_scalars('accuracy_epoch_fg', dict(val=val_fg_bg_accuracy[0]), self.current_epoch)
+            self.xp.writer.add_scalars('accuracy_epoch_bg', dict(val=val_fg_bg_accuracy[1]), self.current_epoch)
+            return val_loss, val_fg_bg_accuracy
 
     def _create_scheduler(self, data: DrawingsData, frozen: bool):
         lr = [self.hparams.encoder_lr, self.hparams.decoder_lr]
@@ -329,7 +377,8 @@ def parse_command_line():
 if __name__ == "__main__":
     args = parse_command_line()
     if args.debug:
-        zvlog.start (('127.0.0.1', 7007))
+        zvlog.start ()
+        # zvlog.start (('127.0.0.1', 7007))
 
     root_dir = Path(__file__).parent.parent
     datasets_path = [
