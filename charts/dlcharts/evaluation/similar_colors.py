@@ -5,6 +5,7 @@ from dlcharts.common.dataset import LabeledImage
 import cv2
 import numpy as np
 from torch import per_channel_affine_float_qparams
+import torch
 from zv.log import zvlog
 import zv
 
@@ -14,6 +15,7 @@ from icecream import ic
 from abc import ABC, abstractmethod
 import sys
 import itertools
+import shutil
 
 from enum import Enum
 from dataclasses import dataclass
@@ -104,8 +106,13 @@ class HSVFinder(SimilarColorFinder):
         return np.all(diff < np.array([deltaH_360, deltaS, deltaV_255]), axis=-1)
 
 class DeepRegressionFinder(RGBFinder):
-    def __init__(self, raw_image_rgb, model_file):
-        processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / model_file)
+    def __init__(self, raw_image_rgb, model):
+        if isinstance(model, torch.nn.Module):
+            # Interpret as a loaded model.
+            processor = cr.Processor (model)
+        else:
+            # Interpret as a file.
+            processor = cr.Processor (Path(__file__).parent.parent.parent / "pretrained" / model)
         
         filtered_image_rgb, maybe_cropped_raw_rgb = processor.process_image(raw_image_rgb)
         super().__init__(filtered_image_rgb, maybe_cropped_raw_rgb)
@@ -239,7 +246,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
     average_f1 = np.mean([score.f1 for score in precision_recall_f1_scores])
 
     # Show all the values to get a quick overview.
-    print ("(precision, recall, f1) = ", end =" ")
+    # print ("(precision, recall, f1) = ", end =" ")
     for score in precision_recall_f1_scores:
         if score.rating == Rating.GOOD:
             color_prefix, color_suffix = (TermColors.GREEN, TermColors.END)
@@ -248,14 +255,15 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
         else:
             color_prefix, color_suffix = (TermColors.RED, TermColors.END)
             color_prefix += f"rc[{score.rc[0]},{score.rc[1]}]"
-        print (f"{color_prefix}({score.precision:.2f} {score.recall:.2f} {score.f1:.2f}){color_suffix}", end =" ")
-    print()
+        # print (f"{color_prefix}({score.precision:.2f} {score.recall:.2f} {score.f1:.2f}){color_suffix}", end =" ")
+    # print()
 
     num_good = np.count_nonzero ([score.rating == Rating.GOOD for score in precision_recall_f1_scores])
     num_samples = len(precision_recall_f1_scores)
     percentage_good = 100.0*num_good/num_samples
-    print (f"Average P,R,F1 over {num_samples} samples {average_precision:.2f}, {average_recall:.2f}, {average_f1:.2f}")
-    print (f"Percentage of great results: {percentage_good:.2f}%")
+    # print (f"Average P,R,F1 over {num_samples} samples {average_precision:.2f}, {average_recall:.2f}, {average_f1:.2f}")
+    # print (f"Percentage of great results: {percentage_good:.2f}%")
+    # print (f"{percentage_good:.2f}%", end=' ', flush=True)
     return Results (percentage_good=percentage_good, average_precision=average_precision, average_recall=average_recall, average_f1=average_f1)
 
 def main_interactive_evaluator(args, image: Path, json: Path):
@@ -276,34 +284,63 @@ def main_interactive_evaluator(args, image: Path, json: Path):
     finder = DeepRegressionFinder(image_rgb, args.model)
     evaluator.process_image (image_rgb, finder, labeled_image)
 
-def main_batch_evaluation (args):
+def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_images=False, easy_mode=False, use_baseline=False):
     test_folders = [
-        Path("inputs/tests/opencv-generated"), 
-        Path("inputs/tests/mpl-generated"),
-        Path("inputs/tests/mpl-generated-no-antialiasing"),
-        Path("inputs/tests/mpl-generated-scatter"),
-        Path("inputs/tests/opencv-generated-background"),
+        test_dir / 'opencv-generated', 
+        test_dir / 'mpl-generated',
+        test_dir / 'mpl-generated-no-antialiasing',
+        test_dir / 'mpl-generated-scatter',
+        test_dir / 'opencv-generated-background',
+        test_dir / 'wild',
     ]
     result_per_folder = {}
-    for folder in test_folders:    
+    if output_path.exists():
+        shutil.rmtree(output_path)
+    output_path.mkdir(parents=True, exist_ok=False)
+    for folder in test_folders:
+        print (f"{folder.name}: ", end="")
+        output_folder_path = output_path / folder.name
+        if save_images:
+            output_folder_path.mkdir(parents=True, exist_ok=True)
         percent_good = []
         # Take the first 50 images.
-        json_files = itertools.islice(folder.glob('*.json'), 50)
+        json_files = list(itertools.islice(folder.glob('*.json'), 50))
+        
+        # Special case for folders without labeled images.
+        if len (json_files) < 1:
+            if save_images:
+                print ("{folder.name}: generating images.")
+                png_files = folder.glob('*.png')
+                for f in png_files:
+                    raw_rgb = swap_rb(cv2.imread (str(f), cv2.IMREAD_COLOR))
+                    finder = DeepRegressionFinder(raw_rgb, model)
+                    cv2.imwrite (str(output_folder_path / f.name), swap_rb(finder.image_rgb))
+            continue
+                
         for json_file in json_files:
             im = LabeledImage (Path(json_file))
             # im = LabeledImage (Path("inputs/mpl-generated/img-02778.json"))
             # im = LabeledImage (Path("generated/drawings-whitebg/img-00000-003.json"))
             im.ensure_images_loaded()
             im.compute_labels_as_rgb()
-            if args.baseline:
-                results = evaluate (im, HSVFinder(im.rendered_image, plot_mode=True), easy_mode=args.easy)
+            if use_baseline:
+                finder = HSVFinder(im.rendered_image, plot_mode=True)
             else:
-                results = evaluate (im, DeepRegressionFinder(im.rendered_image, args.model), easy_mode=args.easy)
+                # FIXME: don't load the finder for every frame, that's expensive for torchscript!
+                finder = DeepRegressionFinder(im.rendered_image, model)
+            if save_images:
+                cv2.imwrite (str(output_folder_path / json_file.with_suffix('.rendered.png').name), swap_rb(finder.image_rgb))
+            results = evaluate (im, finder, easy_mode=easy_mode)
             percent_good.append (results.percentage_good)
         result_per_folder[folder] = np.mean (percent_good)
-    for folder,percent_good in result_per_folder.items():
-        printBold (f"Results for {folder}: {percent_good:.1f}%")    
-    print (", ".join([f"{p:.1f}" for p in result_per_folder.values()]))
+        print (f"{folder.name}: {result_per_folder[folder]:.1f}%")
+    with open(output_path / 'evaluation.txt', 'w') as f:
+        f.write (" | ".join([f"{p.name}" for p in result_per_folder.keys()]))
+        f.write ("\n")
+        f.write (" ".join([f"{p:.1f}" for p in result_per_folder.values()]))
+        f.write ("\n")
+    # Dict { folder: percent_good }
+    return result_per_folder
 
 def main():
     parser = argparse.ArgumentParser()
@@ -324,7 +361,7 @@ def main():
     if args.batch:
         if args.debug:
             zvlog.start ()
-        main_batch_evaluation (args)
+        main_batch_evaluation (Path(), args.model, args.easy_mode, args.baseline)
         zvlog.waitUntilWindowsAreClosed()
     else:
         if not args.image and not args.json:

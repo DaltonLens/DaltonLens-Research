@@ -6,6 +6,7 @@ from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
 from dlcharts.common.utils import InfiniteIterator, printBold, swap_rb
+from dlcharts.evaluation import similar_colors
 
 import torch
 from torch.nn import functional as F
@@ -29,6 +30,7 @@ import warnings
 import os
 import sys
 from dataclasses import dataclass
+import itertools
 
 from tqdm import tqdm
 
@@ -189,6 +191,7 @@ class RegressionTrainer:
         print (f"Encoder frozen: {num_trainable_parameters (self.model)} params.")
         self.current_scheduler = frozen_scheduler
         pbar = tqdm(range(self.xp.first_epoch, self.params.num_epochs))
+        metrics = None
         for e in range(self.xp.first_epoch, self.params.num_frozen_epochs):
             metrics = self._train_one_epoch (e)
             pbar.set_postfix({
@@ -213,7 +216,8 @@ class RegressionTrainer:
                 'val_acc_bg': metrics.val_bg_accuracy})
             pbar.update()
 
-        self.xp.finalize (vars(self.hparams), dict(acc_fg=metrics.val_fg_accuracy, acc_bg=metrics.val_bg_accuracy))
+        if metrics: # can be None if we reloaded the last epoch.
+            self.xp.finalize (vars(self.hparams), dict(acc_fg=metrics.val_fg_accuracy, acc_bg=metrics.val_bg_accuracy))
 
     def _train_one_epoch(self, current_epoch) -> EpochMetrics:
         self.current_epoch = current_epoch
@@ -370,9 +374,9 @@ def parse_command_line():
     
     args = parser.parse_args()
     if args.validate:
-        args.overfit = 64*10
-        args.epochs_decoder_only = 3
-        args.epochs_finetune = 3
+        args.overfit = args.batch_size*3
+        args.epochs_decoder_only = 2
+        args.epochs_finetune = 2
     return args
 
 if __name__ == "__main__":
@@ -418,3 +422,8 @@ if __name__ == "__main__":
     data = DrawingsData(datasets_path, params, hparams)
     trainer = RegressionTrainer(params, hparams)
     trainer.train (data)
+
+    similar_colors.main_batch_evaluation(root_dir / 'inputs' / 'tests',
+                                         trainer.model,
+                                         output_path=trainer.xp.log_path / 'evaluation',
+                                         save_images=True)

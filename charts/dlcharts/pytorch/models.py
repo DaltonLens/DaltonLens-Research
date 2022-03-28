@@ -58,10 +58,9 @@ class UnetDecoder(nn.Module):
         if isinstance(state, dict):
             self.residual_mode = state['residual_mode']            
         else:
-            values = state.item()
-            self.residual_mode = values[0]
-            self.self_attention = values[1]
-            self.icnr_shuffle = values[2]
+            self.residual_mode = state[0].item()
+            self.self_attention = state[1].item()
+            self.icnr_shuffle = state[2].item()
 
     def get_extra_state(self):
         return torch.tensor([self.residual_mode, self.self_attention, self.icnr_shuffle])

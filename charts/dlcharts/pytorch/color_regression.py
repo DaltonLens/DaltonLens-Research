@@ -157,11 +157,14 @@ def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.
     return num_good / num_pixels
 
 class Processor:
-    def __init__(self, torchscript_model_pt: Path):
+    def __init__(self, model_or_torchscript):
         self.device = torch.device("cpu")
         self.preprocessor = ImagePreprocessor(self.device)
         # self.net = torch.load (network_model_pt, map_location=self.device)
-        self.net = torch.jit.load(torchscript_model_pt, map_location=self.device)
+        if isinstance(model_or_torchscript, torch.nn.Module):
+            self.net = model_or_torchscript.to (self.device)
+        else:
+            self.net = torch.jit.load(model_or_torchscript, map_location=self.device)
         self.net.eval()
         # In case only a checkpoint was saved, and not the full model
         # self.net = RegressionNet_Unet1(residual_mode=True)
@@ -171,10 +174,17 @@ class Processor:
         # torch.save(self.net, network_model_pt.with_suffix('.model.pt'))
 
     def process_image(self, image_rgb: np.ndarray):
-        input: Tensor = self.preprocessor.transform (image_rgb, image_rgb)[0]
-        if (image_rgb.shape[0] % 64 != 0) or (image_rgb.shape[1] % 64 != 0):
+        # Faking the GT data.
+        fake_target_rgb = np.zeros_like(image_rgb, dtype=np.uint8)
+        fake_fg_mask = np.zeros_like((image_rgb.shape[0], image_rgb.shape[1]), dtype=np.uint8)
+        input: Tensor = list(self.preprocessor.transform ([image_rgb, fake_target_rgb, fake_fg_mask]))[0]
+        too_big = (image_rgb.shape[0] > 1280) or (image_rgb.shape[1] > 1280)
+        not_64_multiple = (image_rgb.shape[0] % 64 != 0) or (image_rgb.shape[1] % 64 != 0)
+        if not_64_multiple or too_big:
             new_size_y, new_size_x = 64 * (image_rgb.shape[0] // 64), 64 * (image_rgb.shape[1] // 64)
-            ic(new_size_x, new_size_y)
+            new_size_x = min(new_size_x, 1280)
+            new_size_y = min(new_size_y, 1280)
+            # ic(new_size_x, new_size_y)
             input = transforms.CenterCrop(min(new_size_x, new_size_y))(input)
         input.unsqueeze_ (0) # add the batch dim
         output = self.net (input)
