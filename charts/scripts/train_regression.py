@@ -292,8 +292,9 @@ class RegressionTrainer:
                 log_and_save (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
                 log_and_save (f"{title}-{idx}-epoch{epoch}-output", outputs[idx].permute(1, 2, 0).numpy())
                 log_and_save (f"{title}-{idx}-epoch{epoch}-target", targets[idx].permute(1, 2, 0).numpy())
-            stacked_for_tboard = torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
-            self.xp.writer.add_image(title, stacked_for_tboard, epoch)
+            # Slow and not useful anymore now that we save the actual images for a closer inspection.
+            # stacked_for_tboard = torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
+            # self.xp.writer.add_image(title, stacked_for_tboard, epoch)
         
         with evaluating(self.model), torch.no_grad():
             evaluate_images("Train Samples", self.data.monitored_train_samples)
@@ -381,6 +382,9 @@ if __name__ == "__main__":
         # zvlog.start (('127.0.0.1', 7007))
 
     root_dir = Path(__file__).parent.parent
+    # Note: __file__ does not work when run e.g. through Palanteer.
+    # Alternative assuming a good cwd folder.
+    # root_dir = Path().absolute()
     datasets_path = [
         root_dir / 'inputs' / 'train' / 'opencv-generated' / 'drawings',
         root_dir / 'inputs' / 'train' / 'opencv-generated-background',

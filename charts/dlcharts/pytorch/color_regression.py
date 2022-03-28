@@ -73,7 +73,7 @@ class ColorRegressionImageDataset(Dataset):
         image: torch.FloatTensor
         labels_rgb: torch.FloatTensor
         labels_mask: torch.ByteTensor
-        labels_json: Dict
+        random_fg_label: int
         source: str
 
         def to(self, device: torch.device):
@@ -81,7 +81,7 @@ class ColorRegressionImageDataset(Dataset):
                 image=self.image.to(device), 
                 labels_rgb=self.labels_rgb.to(device),
                 labels_mask=self.labels_mask.to(device),
-                labels_json=self.labels_json,
+                random_fg_label=self.random_fg_label,
                 source=self.source)
 
     debug: bool = False
@@ -107,7 +107,11 @@ class ColorRegressionImageDataset(Dataset):
         image = labeled_img.rendered_image
         labels_image = labeled_img.labels_as_rgb
         labels_mask = labeled_img.labels_image
-        labels_json = labeled_img.json
+        # This guy could be used to compute a deviation loss on one label.
+        # Pick semi-randomly to avoid issues where e.g. the fist fg label
+        # is always the grid.
+        fg_label_idx = 1 + (idx % len(labeled_img.json['labels']) - 1)
+        random_fg_label = labeled_img.json['labels'][fg_label_idx]
         labeled_img.release_images()
         if self.transform:
             if self.debug:
@@ -123,7 +127,7 @@ class ColorRegressionImageDataset(Dataset):
         return self.Sample(image=image,
                            labels_rgb=labels_image,
                            labels_mask=labels_mask,
-                           labels_json=labels_json,
+                           random_fg_label=random_fg_label,
                            source=repr(self.labeled_images[idx]))
 
     def __repr__(self):
