@@ -110,7 +110,8 @@ class ColorRegressionImageDataset(Dataset):
         # This guy could be used to compute a deviation loss on one label.
         # Pick semi-randomly to avoid issues where e.g. the fist fg label
         # is always the grid.
-        fg_label_idx = 1 + (idx % len(labeled_img.json['labels']) - 1)
+        fg_label_idx = 1 + (idx % (len(labeled_img.json['labels']) - 1))
+        assert fg_label_idx != 0
         random_fg_label = labeled_img.json['labels'][fg_label_idx]
         labeled_img.release_images()
         if self.transform:

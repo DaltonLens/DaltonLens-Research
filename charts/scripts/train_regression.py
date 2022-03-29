@@ -31,6 +31,7 @@ import os
 import sys
 from dataclasses import dataclass
 import itertools
+from timeit import default_timer as now_seconds
 
 from tqdm import tqdm
 
@@ -148,6 +149,36 @@ def weighted_loss(loss_fn):
         return loss_scalar
     return loss
 
+def fg_var_loss(data_loss_fn):
+    def loss (outputs: torch.FloatTensor, batch: Sample):
+        data_loss = data_loss_fn(outputs, batch.labels_rgb)
+        fg_label = batch.random_fg_label['label']
+        B = batch.labels_mask.size()[0]
+
+        # Do everything as B,C,N to keep stats simpler to write
+        outputs = outputs.view(B,3,-1)
+        fg_mask = batch.labels_mask.view(B,1,-1) == fg_label.view(B,1,1).to(batch.labels_mask.get_device())
+       
+        n_fg_per_channel = fg_mask.sum(dim=-1) # B,C
+        
+        bg_mask = torch.logical_not(fg_mask)
+        bg_mask_rgb = bg_mask.expand (B,3,-1) # B,3,N
+        masked_outputs = outputs.clone()
+        masked_outputs[bg_mask_rgb] = 0.0 # B,C,N
+        sums = masked_outputs.sum(dim=-1) # B,C
+        means = torch.divide(sums, n_fg_per_channel) # B,C
+        means = means.unsqueeze(-1) # B,C,1 for broadcasting
+        diff_sqr = (masked_outputs - means).square() # B,C,N
+        diff_sqr[bg_mask_rgb] = 0.0
+        variances = torch.divide (diff_sqr.sum(dim=-1), n_fg_per_channel) # B,C
+        variances = variances.mean(dim=-1) # B
+        # If we don't have enough foreground, skip the reg_loss
+        variances[n_fg_per_channel.view(-1) < 64] = 0.0
+        assert not torch.isnan(variances).any()
+        reg_loss = torch.mean (variances)
+        return data_loss + reg_loss
+    return loss
+
 def uniform_loss(loss_fn):
     def loss (outputs: torch.FloatTensor, batch: Sample):
         return loss_fn(outputs, batch.labels_rgb)
@@ -171,6 +202,7 @@ class RegressionTrainer:
             mse = uniform_loss(nn.MSELoss()),
             l1 = uniform_loss(nn.L1Loss()),
             weighted_mse = weighted_loss(nn.MSELoss(reduction='none')),
+            mse_and_fg_var = fg_var_loss(nn.MSELoss())
         )
         self.loss_fn = losses[hparams.loss]
         self.accuracy_fn = regression_accuracy
@@ -231,6 +263,7 @@ class RegressionTrainer:
         pbar = tqdm(self.data.train_dataloader, position=1, leave=False)
         batch: Sample
         for batch_idx, batch in enumerate(pbar):
+            tstart = now_seconds()
             self.global_step = current_epoch * num_batches + batch_idx            
             batch = batch.to(self.device)
             outputs = self._evaluate_batch (batch)
@@ -240,6 +273,7 @@ class RegressionTrainer:
             self.optimizer.step()
             self.current_scheduler.step()
             cumulated_train_loss += loss.cpu()
+            tend = now_seconds()
 
             if batch_idx % 10 == 0:
                 with torch.no_grad():
@@ -247,6 +281,8 @@ class RegressionTrainer:
                 self.xp.writer.add_scalars('loss_iter', dict(train=loss), self.global_step)
                 self.xp.writer.add_scalars('accuracy_iter_fg', dict(train=fg_bg_accuracy[0]), self.global_step)
                 self.xp.writer.add_scalars('accuracy_iter_bg', dict(train=fg_bg_accuracy[1]), self.global_step)
+                self.xp.log_lr (self.optimizer, self.global_step)
+                self.xp.writer.add_scalar(f'timings/per-iteration-ms', (tend - tstart)*1e3, self.global_step)
 
             if batch_idx % 20 == 0:
                 self._compute_batch_validation(val_batch_iterator)

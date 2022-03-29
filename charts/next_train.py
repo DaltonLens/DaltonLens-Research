@@ -16,7 +16,7 @@ def quick_validate():
             "python3", "scripts/train_regression.py",
             f"quick",
 
-            "--loss", "weighted_mse",
+            "--loss", "mse_and_fg_var",
 
             "--clean_previous",
 
@@ -24,7 +24,13 @@ def quick_validate():
 
             "--validate",
 
-            "--debug",
+            "--overfit", "4",
+
+            # "--debug",
+
+            "--epochs_decoder_only", "100",
+
+            "--epochs_finetune", "1",
 
             "--model", "uresnet18"
         ], check=True)
@@ -74,7 +80,7 @@ if __name__ == "__main__":
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"]
-        loss = ["mse", "weighted_mse"]
+        loss = ["mse_and_fg_var"]
     )
    
     # [dict1, dict2, ...]
@@ -100,8 +106,8 @@ if __name__ == "__main__":
 
                 # TEMP!
                 # "--debug",
-                "--clean_previous",
-                "--validate",
-                "--overfit", "1",
-                "--batch_size", "4",
+                # "--clean_previous",
+                # "--validate",
+                # "--overfit", "1",
+                # "--batch_size", "4",
             ], check=True)

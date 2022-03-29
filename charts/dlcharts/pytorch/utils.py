@@ -118,6 +118,14 @@ class Experiment:
         self.writer = SummaryWriter(log_dir=self.log_path)
         self.writer.add_graph(net, sample_input)
 
+    def log_lr (self, optimizer: torch.optim.Optimizer, global_step: int):
+        for idx, param_group in enumerate(optimizer.param_groups):
+            self.writer.add_scalar(f'scheduler/lr-{idx}', param_group['lr'], global_step)
+            if 'momentum' in param_group:
+                self.writer.add_scalar(f'scheduler/momentum-{idx}', param_group['momentum'], global_step)
+            elif 'betas' in param_group: # for Adam
+                self.writer.add_scalar(f'scheduler/momentum-{idx}', param_group['betas'][0], global_step)
+
     def finalize(self, hparams, metrics):
         self.writer.add_hparams(hparams, metrics)
 
