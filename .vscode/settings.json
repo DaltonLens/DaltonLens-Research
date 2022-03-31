@@ -15,6 +15,7 @@
         "imread",
         "IMREAD",
         "imshow",
+        "mobilenetv",
         "ncols",
         "ndarray",
         "nrows",

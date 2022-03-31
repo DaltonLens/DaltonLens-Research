@@ -309,7 +309,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         # Special case for folders without labeled images.
         if len (json_files) < 1:
             if save_images:
-                print ("{folder.name}: generating images.")
+                print (f"{folder.name}: generating images.")
                 png_files = folder.glob('*.png')
                 for f in png_files:
                     raw_rgb = swap_rb(cv2.imread (str(f), cv2.IMREAD_COLOR))

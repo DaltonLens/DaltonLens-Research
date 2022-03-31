@@ -397,6 +397,7 @@ def parse_command_line():
     parser.add_argument("--validate", action='store_true')
     parser.add_argument("--overfit", type=int, default=0)
     parser.add_argument("--clean_previous", action='store_true')
+    parser.add_argument("--no-evaluation", action='store_true')
     
     parser.add_argument("--epochs_decoder_only", type=int, default=40)
     parser.add_argument("--epochs_finetune", type=int, default=20)
@@ -459,7 +460,8 @@ if __name__ == "__main__":
     trainer = RegressionTrainer(params, hparams)
     trainer.train (data)
 
-    similar_colors.main_batch_evaluation(root_dir / 'inputs' / 'tests',
-                                         trainer.model,
-                                         output_path=trainer.xp.log_path / 'evaluation',
-                                         save_images=True)
+    if not args.no_evaluation:
+        similar_colors.main_batch_evaluation(root_dir / 'inputs' / 'tests',
+                                            trainer.model,
+                                            output_path=trainer.xp.log_path / 'evaluation',
+                                            save_images=True)

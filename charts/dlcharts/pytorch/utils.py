@@ -146,6 +146,12 @@ class Experiment:
 def num_trainable_parameters(model):
     return pretty_size(sum(p.numel() for p in model.parameters() if p.requires_grad))
 
+def get_model_complexity_info(model, input_size=(3, 192, 192), device='cpu'):
+    import ptflops
+    print (ptflops.get_model_complexity_info(model, input_size, as_strings=True, print_per_layer_stat=False, verbose=False))
+    import torchsummary
+    print (torchsummary.summary(model, input_size, device=device))
+
 def clear_gpu_memory():    
     gc.collect()
     torch.cuda.empty_cache()
