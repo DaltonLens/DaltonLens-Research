@@ -2,6 +2,7 @@
 
 import shutil
 import dlcharts
+from dlcharts.pytorch import models_regression_gated
 from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
@@ -69,10 +70,12 @@ class Params:
 @dataclass
 class EpochMetrics:
     training_loss: float
-    val_loss: float
+    val_loss: float 
     val_fg_accuracy: float
     val_bg_accuracy: float
-    
+    val_mask_accuracy: float = 0.0 # percent of correctly classified fg/bg pixels
+    val_color_accuracy: float = 0.0 # percent of correct color for correctly classified fg pixels
+
 class DrawingsData:
     train_dataloader: DataLoader
     val_dataloader: DataLoader
@@ -120,6 +123,8 @@ class DrawingsData:
         self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
 
 def regression_accuracy(outputs: torch.FloatTensor, batch: Sample):
+    outputs = models_regression_gated.decode_gated_regression (outputs, batch.image)[0]
+
     diff = torch.abs(outputs-batch.labels_rgb)
     max_diff = torch.max(diff, dim=1)[0]
     
@@ -138,59 +143,34 @@ def regression_accuracy(outputs: torch.FloatTensor, batch: Sample):
     acc_bg = torch.count_nonzero(bg_good) / num_bg_pixels
     return torch.tensor([acc_fg, acc_bg])
 
-def weighted_loss(loss_fn):
-    def loss(outputs: torch.FloatTensor, batch: Sample):
-        raw_loss = loss_fn(outputs, batch.labels_rgb)
-        # 1 for bg, 10 for foreground
-        # Typical ratio in our training images is more like 2x
-        # more background. But does not hurt to make it even stronger
-        # for the foreground, since this is the hard part.
-        weights = (batch.labels_mask > 0).float() * 10.0 + 1.0
-        weighted_loss = raw_loss * weights.unsqueeze(1) # add the channel dimension to broadcast
-        loss_scalar = torch.mean (weighted_loss)
-        return loss_scalar
-    return loss
+class GatedLoss:
+    def __init__(self, regression_loss):
+        self.bce_loss = nn.BCEWithLogitsLoss()
+        self.regression_loss = regression_loss
 
-def fg_var_loss(data_loss_fn):
-    def loss (outputs: torch.FloatTensor, batch: Sample):
-        data_loss = data_loss_fn(outputs, batch.labels_rgb)
-        fg_label = batch.random_fg_label['label']
-        B = batch.labels_mask.size()[0]
+    def __call__(self, input: torch.Tensor, batch: Sample) -> torch.Tensor:
+        fg_mask = batch.labels_mask != 0
+        pred_logits = input[:,-1,...]
+        pred_mask = pred_logits > 0.0
+        mask_loss = self.bce_loss (pred_logits, fg_mask.float())
 
-        # Do everything as B,C,N to keep stats simpler to write
-        outputs = outputs.view(B,3,-1)
-        fg_mask = batch.labels_mask.view(B,1,-1) == fg_label.view(B,1,1).to(batch.labels_mask.get_device())
-       
-        n_fg_per_channel = fg_mask.sum(dim=-1) # B,C
-        
-        bg_mask = torch.logical_not(fg_mask)
-        bg_mask_rgb = bg_mask.expand (B,3,-1) # B,3,N
-        masked_outputs = outputs.clone()
-        masked_outputs[bg_mask_rgb] = 0.0 # B,C,N
-        sums = masked_outputs.sum(dim=-1) # B,C
-        means = torch.divide(sums, n_fg_per_channel) # B,C
-        means = means.unsqueeze(-1) # B,C,1 for broadcasting
-        diff_sqr = (masked_outputs - means).square() # B,C,N
-        diff_sqr[bg_mask_rgb] = 0.0
-        variances = torch.divide (diff_sqr.sum(dim=-1), n_fg_per_channel) # B,C
-        variances = variances.mean(dim=-1) # B
-        # If we don't have enough foreground, skip the reg_loss
-        variances[n_fg_per_channel.view(-1) < 64] = 0.0
-        assert not torch.isnan(variances).any()
-        reg_loss = torch.mean (variances)
-        return data_loss + reg_loss
-    return loss
+        correct_pred_fg_mask = torch.logical_and(pred_mask, fg_mask)
+        bg_mask = torch.logical_not(correct_pred_fg_mask).unsqueeze(1) # B,1,H,W
+        bg_mask_rgb = bg_mask.expand (-1,3,-1,-1) # B,3,H,W
+        input_rgb = input[:,:3,...] # remove the mask channel
+        fg_rgb_loss = self.regression_loss (input_rgb, batch.labels_rgb)
+        # better to set to zero rather than multiplying by the mask, it removes
+        # the gradient entirely.
+        fg_rgb_loss[bg_mask_rgb] = 0.0
+        fg_rgb_loss = torch.sum(fg_rgb_loss) / torch.count_nonzero(correct_pred_fg_mask)
 
-def uniform_loss(loss_fn):
-    def loss (outputs: torch.FloatTensor, batch: Sample):
-        return loss_fn(outputs, batch.labels_rgb)
-    return loss
+        return mask_loss + fg_rgb_loss
 
 class RegressionTrainer:
     def __init__(self, params: Params, hparams: Hparams):
         self.hparams = hparams
         self.params = params
-        self.model = dlcharts.pytorch.models_regression.create_regression_model(hparams.regression_model)            
+        self.model = dlcharts.pytorch.models_regression_gated.create_gated_regression_model(hparams.regression_model)            
 
         self.device = self.params.device
 
@@ -201,10 +181,8 @@ class RegressionTrainer:
                              clear_top_folder=params.clear_top_folder)
 
         losses = dict(
-            mse = uniform_loss(nn.MSELoss()),
-            l1 = uniform_loss(nn.L1Loss()),
-            weighted_mse = weighted_loss(nn.MSELoss(reduction='none')),
-            mse_and_fg_var = fg_var_loss(nn.MSELoss())
+            mse = GatedLoss(nn.MSELoss(reduction='none')),
+            l1 = GatedLoss(nn.L1Loss(reduction='none')),
         )
         self.loss_fn = losses[hparams.loss]
         self.accuracy_fn = regression_accuracy
@@ -316,27 +294,26 @@ class RegressionTrainer:
             im = (im*255.9999).astype(np.uint8)
             zvlog.image(name, im)
             # opencv expects bgr
-            cv2.imwrite(str(self.xp.log_path / (name + '.png')), swap_rb(im))
+            cv2.imwrite(str(self.xp.log_path / (name + '.png')), swap_rb(im) if im.ndim == 3 else im)
             
         def evaluate_images(title, sample_list):
             inputs = []
             outputs = []
             targets = []
             sample: Sample
+            epoch = self.current_epoch
             for idx, sample in enumerate(sample_list):
                 sample_device = sample.to(self.device)
                 output = self._evaluate_single_item (sample_device)
-                inputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(sample_device.image.detach().cpu()))
-                outputs.append(self.data.preprocessor.denormalize_and_clip_as_tensor(output.detach().cpu()))
-                targets.append(self.data.preprocessor.denormalize_and_clip_as_tensor(sample_device.labels_rgb.detach().cpu()))
-            epoch = self.current_epoch
-            for idx in range(0, len(outputs)):                
-                log_and_save (f"{title}-{idx}-epoch{epoch}-input", inputs[idx].permute(1, 2, 0).numpy())
-                log_and_save (f"{title}-{idx}-epoch{epoch}-output", outputs[idx].permute(1, 2, 0).numpy())
-                log_and_save (f"{title}-{idx}-epoch{epoch}-target", targets[idx].permute(1, 2, 0).numpy())
-            # Slow and not useful anymore now that we save the actual images for a closer inspection.
-            # stacked_for_tboard = torch.cat([torch.cat(outputs, dim=2), torch.cat(targets, dim=2), torch.cat(inputs, dim=2)], dim=1)
-            # self.xp.writer.add_image(title, stacked_for_tboard, epoch)
+                output_rgb, output_mask = models_regression_gated.decode_gated_regression(output, sample_device.image)
+                output_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(output_rgb.detach().cpu())
+                output_mask = (output_mask > 0.0).float()
+                target_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(sample_device.labels_rgb.detach().cpu())                
+                input_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(sample_device.image.detach().cpu())
+                log_and_save (f"{title}-{idx}-epoch{epoch}-input", input_rgb)
+                log_and_save (f"{title}-{idx}-epoch{epoch}-output", output_rgb)
+                log_and_save (f"{title}-{idx}-epoch{epoch}-output-mask", output_mask.cpu().numpy())
+                log_and_save (f"{title}-{idx}-epoch{epoch}-target", target_rgb)
         
         with evaluating(self.model), torch.no_grad():
             evaluate_images("Train Samples", self.data.monitored_train_samples)

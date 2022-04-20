@@ -121,7 +121,7 @@ class RegressionModule(pl.LightningModule):
     def __init__(self, phase: Phase, encoder_lr=1e-4, decoder_lr=1e-3, regression_model: str = 'uresnet18-v1'):
         super().__init__()
         self.save_hyperparameters()
-        self.model = dlcharts.pytorch.models.create_regression_model(regression_model)
+        self.model = dlcharts.pytorch.models_regression.create_regression_model(regression_model)
         
         # Aliases to get nice summary stats.
         self.encoder = self.model.encoder

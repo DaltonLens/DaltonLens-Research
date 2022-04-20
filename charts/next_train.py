@@ -13,10 +13,10 @@ from dlcharts.common.timer import Timer
 
 def quick_validate():
     subprocess.run([
-            "python3", "scripts/train_regression.py",
+            "python3", "scripts/train_regression_gated.py",
             f"quick",
 
-            "--loss", "mse_and_fg_var",
+            "--loss", "mse",
 
             "--clean_previous",
 
@@ -34,8 +34,9 @@ def quick_validate():
 
             "--no-evaluation",
 
-            # "--model", "unet-rn18-rn18",
-            "--model", "unet-mobv2-rn18",
+            "--model", "unet-rn18-rn18",
+            # "--model", "unet-mobv2-rn18",
+            # "--model", "unet-mobv2-rn18-nopretrain",
             # "--model", "unet-mobv2-mobv2",
         ], check=True)
 
@@ -66,8 +67,8 @@ def cartesian_product (params: Dict[str,List]):
 
 if __name__ == "__main__":
 
-    # quick_validate()
-    # sys.exit(0)
+    quick_validate()
+    sys.exit(0)
 
     # params_set = dict(
     #     model=["uresnet18", "uresnet18-sa"],
@@ -78,8 +79,8 @@ if __name__ == "__main__":
 
     params_set = dict(
         # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
-        # model=["uresnet18-sa", "uresnet18"],
-        model=["unet-mobv2-rn18", "unet-mobv2-medium", "unet-movb2-large"],
+        model=["uresnet18"],
+        # model=["unet-mobv2-large", "unet-mobv2-rn18", "unet-mobv2-medium"],
         # model=["uresnet18-sa-shuffle"],
         encoder_lr=["1e-5"],
         decoder_lr=["5e-3"],
@@ -87,19 +88,32 @@ if __name__ == "__main__":
         # loss = ["l1"],
         # loss = ["mse_and_fg_var"],
         loss = ["mse"],
+
+        epochs = [(20, 100)],
     )
    
     # [dict1, dict2, ...]
     params_dicts = cartesian_product (params_set)
+
+    # Add a config without pretraining.
+    # params_dicts.insert(0, dict(
+    #     model="unet-mobv2-rn18-nopretrain",
+    #     encoder_lr="1e-4",
+    #     decoder_lr="5e-3",
+    #     batch_size = "32",
+    #     loss = "mse",
+    #     epochs = (1, 200),
+    # ))
 
     for idx, p in enumerate(params_dicts):
         printBold (f"[{idx}/{len(params_dicts)}] training {p}")
         p = SimpleNamespace(**p)
         with Timer("Train one config"):
             subprocess.run([
-                "python3", "scripts/train_regression.py",
+                "python3", "scripts/train_regression_gated.py",
                 # v4 is the input data / data augmentation version.
-                f"v4_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
+                # the 'g' stands for gated regression
+                f"v4_gated_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
                                
                 "--model", p.model,
                 "--batch_size", p.batch_size,
@@ -107,14 +121,14 @@ if __name__ == "__main__":
                 "--encoder_lr", p.encoder_lr,
                 "--loss", p.loss,
 
-                "--epochs_decoder_only", "10",
-                "--epochs_finetune", "100",
+                "--epochs_decoder_only", str(p.epochs[0]),
+                "--epochs_finetune", str(p.epochs[1]),
 
                 # TEMP!
-                # "--debug",
-                # "--clean_previous",
-                # "--validate",
-                # "--overfit", "1",
-                # "--no-evaluation",
-                # "--batch_size", "4",
+                "--debug",
+                "--clean_previous",
+                "--validate",
+                "--overfit", "1",
+                "--no-evaluation",
+                "--batch_size", "4",
             ], check=True)

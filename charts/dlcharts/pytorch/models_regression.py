@@ -17,6 +17,8 @@ from typing import List, Dict
 
 from dataclasses import dataclass
 
+from logging import info
+
 # For the layers output by timm with features_only=True
 encoder_config = dict(
     mobilenetv2_100 = dict(channels=[16, 16, 24, 32, 96, 320]),
@@ -122,10 +124,11 @@ class UnetDecoder(nn.Module):
             return self.head(x)
 
 class RegressionNet_UResNet18(nn.Module):
-    def __init__(self, encoder_model='resnet18', decoder_model='invresnet18', residual_mode=False, self_attention=False, icnr_shuffle=False):
+    def __init__(self, encoder_model='resnet18', decoder_model='invresnet18', pretrained_encoder=True, residual_mode=False, self_attention=False, icnr_shuffle=False):
         super().__init__()
         # self.encoder = timm.create_model('resnet18', features_only=True, pretrained=True, scriptable=True, exportable=True)
-        self.encoder = timm.create_model(encoder_model, features_only=True, pretrained=True, scriptable=True, exportable=True)
+        self.pretrained_encoder = pretrained_encoder
+        self.encoder = timm.create_model(encoder_model, features_only=True, pretrained=pretrained_encoder, scriptable=True, exportable=True)
         # get_model_complexity_info (self.encoder)        
         self.decoder = UnetDecoder(residual_mode, self_attention, icnr_shuffle, encoder_config[encoder_model], decoder_config[decoder_model])
         # {'module': 'act1', 'num_chs': 64, 'reduction': 2},
@@ -141,10 +144,15 @@ class RegressionNet_UResNet18(nn.Module):
         # X torch.Size([8, 512, 3, 4])
 
     def freeze_encoder(self):
+        if not self.pretrained_encoder:
+            info ("The encoder is not pretrained, not freezing anything")
+            return
         for p in self.encoder.parameters():
             p.requires_grad = False
 
     def unfreeze_encoder(self):
+        if not self.pretrained_encoder:
+            return
         for p in self.encoder.parameters():
             p.requires_grad = True
 
@@ -168,9 +176,12 @@ def create_regression_model(name):
 
     args = {}
 
-    args['self_attention'] = 'sa' in opts[3:]
-    args['residual_mode'] = not 'nores' in opts[3:]
-    args['icnr_shuffle'] = 'shuffle' in opts[3:]
+    # Focus on the remaining options
+    opts = opts[3:]
+    args['self_attention'] = 'sa' in opts
+    args['residual_mode'] = not 'nores' in opts
+    args['icnr_shuffle'] = 'shuffle' in opts
+    args['pretrained_encoder'] = not 'nopretrain' in opts
 
     encs = dict(mobv2='mobilenetv2_100', rn18='resnet18')
     assert enc in encs
