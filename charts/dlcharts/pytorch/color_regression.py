@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 from collections import namedtuple
+
+from dlcharts.pytorch.models_regression import RegressionModelOutput
+
 from ..common.dataset import LabeledImage
 from . import segmentation_transforms
 from .segmentation_transforms import ApplyOnAll, ApplyOnFloatOnly
@@ -188,8 +191,8 @@ class Processor:
             # ic(new_size_x, new_size_y)
             input = transforms.CenterCrop(min(new_size_x, new_size_y))(input)
         input.unsqueeze_ (0) # add the batch dim
-        output = self.net (input)
-        output_im = self.preprocessor.denormalize_and_clip_as_numpy (output[0])
+        output: RegressionModelOutput = self.net (input)
+        output_im = self.preprocessor.denormalize_and_clip_as_numpy (output.rgb[0])
         output_im = (output_im * 255).astype(np.uint8)
 
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])

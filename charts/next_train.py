@@ -67,8 +67,8 @@ def cartesian_product (params: Dict[str,List]):
 
 if __name__ == "__main__":
 
-    quick_validate()
-    sys.exit(0)
+    # quick_validate()
+    # sys.exit(0)
 
     # params_set = dict(
     #     model=["uresnet18", "uresnet18-sa"],
@@ -79,7 +79,8 @@ if __name__ == "__main__":
 
     params_set = dict(
         # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
-        model=["uresnet18"],
+        # model=["unet-rn18-rn18"],
+        model=["unet-rn18-rn18-sa"],
         # model=["unet-mobv2-large", "unet-mobv2-rn18", "unet-mobv2-medium"],
         # model=["uresnet18-sa-shuffle"],
         encoder_lr=["1e-5"],
@@ -89,7 +90,8 @@ if __name__ == "__main__":
         # loss = ["mse_and_fg_var"],
         loss = ["mse"],
 
-        epochs = [(20, 100)],
+        epochs = [(50, 200)],
+        # epochs = [(20, 100)],
     )
    
     # [dict1, dict2, ...]
@@ -125,10 +127,10 @@ if __name__ == "__main__":
                 "--epochs_finetune", str(p.epochs[1]),
 
                 # TEMP!
-                "--debug",
-                "--clean_previous",
-                "--validate",
-                "--overfit", "1",
-                "--no-evaluation",
-                "--batch_size", "4",
+                # "--debug",
+                # "--clean_previous",
+                # "--validate",
+                # "--overfit", "1",
+                # "--no-evaluation",
+                # "--batch_size", "4",
             ], check=True)

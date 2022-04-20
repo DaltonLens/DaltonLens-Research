@@ -13,11 +13,16 @@ import timm
 
 from icecream import ic
 
-from typing import List, Dict
+from typing import List, Dict, NamedTuple
 
 from dataclasses import dataclass
 
 from logging import info
+
+class RegressionModelOutput(NamedTuple):
+    rgb: torch.FloatTensor
+    mask: torch.BoolTensor = None
+    raw_rgb_and_mask: torch.FloatTensor = None
 
 # For the layers output by timm with features_only=True
 encoder_config = dict(

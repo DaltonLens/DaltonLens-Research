@@ -1,6 +1,7 @@
 from json import encoder
 from .layers import ResnetBlock, UnetBlock
 from .utils import get_model_complexity_info
+from .models_regression import RegressionModelOutput
 
 import torch
 import torch.nn.functional as F
@@ -91,8 +92,8 @@ class UnetDecoder(nn.Module):
     def set_extra_state(self, state):
         # Backward compat, we used to save it as a dictionary.
         # But this is a problem for ONNX tracing, it needs tensors.
-        self.self_attention = state[1].item()
-        self.icnr_shuffle = state[2].item()
+        self.self_attention = state[0].item()
+        self.icnr_shuffle = state[1].item()
 
     def get_extra_state(self):
         return torch.tensor([self.self_attention, self.icnr_shuffle])
@@ -151,33 +152,34 @@ class GatedRegressionUnet(nn.Module):
         for p in self.encoder.parameters():
             p.requires_grad = True
 
+    def decode_gated_regression(self, output_raw_rgb_and_mask: torch.Tensor, input_rgb: torch.Tensor):
+        """
+        outputs: B,4,H,W output of the model
+        input_rgb: B,3,H,W raw input image
+        
+        Returns the final RGB image by applying the mask on the outputs.
+        """
+        single_item = (output_raw_rgb_and_mask.dim() == 3)
+        if single_item:
+            output_raw_rgb_and_mask = output_raw_rgb_and_mask.unsqueeze(0)
+            input_rgb = input_rgb.unsqueeze(0)
+
+        # The mask is the last channel.
+        fg_mask = output_raw_rgb_and_mask[:,-1,:,:] > 0.0
+        fg_mask_rgb = fg_mask.unsqueeze(1).expand(-1,3,-1,-1)
+        outputs_rgb = output_raw_rgb_and_mask[:,0:3,:,:]
+        final_rgb = torch.where(fg_mask_rgb, outputs_rgb, input_rgb)
+
+        if single_item:
+            final_rgb = final_rgb.squeeze(0)
+            fg_mask = fg_mask.squeeze(0)
+        return (final_rgb, fg_mask)
+
     def forward(self, img):
         encoded_layers = self.encoder(img)
-        return self.decoder(img, encoded_layers)
-
-def decode_gated_regression(outputs: torch.Tensor, input_rgb: torch.Tensor):
-    """
-    outputs: B,4,H,W output of the model
-    input_rgb: B,3,H,W raw input image
-    
-    Returns the final RGB image by applying the mask on the outputs.
-    """
-    single_item = (outputs.dim() == 3)
-    if single_item:
-        outputs = outputs.unsqueeze(0)
-        input_rgb = input_rgb.unsqueeze(0)
-
-    # The mask is the last channel.
-    fg_mask = outputs[:,-1,:,:] > 0.0
-    fg_mask_rgb = fg_mask.unsqueeze(1).expand(-1,3,-1,-1)
-    outputs_rgb = outputs[:,0:3,:,:]
-    final_rgb = torch.where(fg_mask_rgb, outputs_rgb, input_rgb)
-
-    if single_item:
-        final_rgb = final_rgb.squeeze(0)
-        fg_mask = fg_mask.squeeze(0)
-    return (final_rgb, fg_mask)
-
+        raw_rgb_and_mask = self.decoder(img, encoded_layers)
+        final_rgb, final_mask = self.decode_gated_regression (raw_rgb_and_mask, img)
+        return RegressionModelOutput(rgb=final_rgb, mask=final_mask, raw_rgb_and_mask=raw_rgb_and_mask)
 
 def create_gated_regression_model(name):
     model = None

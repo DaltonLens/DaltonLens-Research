@@ -41,6 +41,7 @@ from zv.log import zvlog
 import logging
 
 Sample = cr.ColorRegressionImageDataset.Sample
+ModelOutput = dlcharts.pytorch.models_regression.RegressionModelOutput
 
 DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
@@ -122,10 +123,9 @@ class DrawingsData:
         self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
         self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
 
-def regression_accuracy(outputs: torch.FloatTensor, batch: Sample):
-    outputs = models_regression_gated.decode_gated_regression (outputs, batch.image)[0]
-
-    diff = torch.abs(outputs-batch.labels_rgb)
+def regression_accuracy(outputs: ModelOutput, batch: Sample):
+    output_rgb = outputs.rgb
+    diff = torch.abs(output_rgb-batch.labels_rgb)
     max_diff = torch.max(diff, dim=1)[0]
     
     # Very important to call numel on the image with one channel,
@@ -148,17 +148,17 @@ class GatedLoss:
         self.bce_loss = nn.BCEWithLogitsLoss()
         self.regression_loss = regression_loss
 
-    def __call__(self, input: torch.Tensor, batch: Sample) -> torch.Tensor:
+    def __call__(self, output: ModelOutput, batch: Sample) -> torch.Tensor:
         fg_mask = batch.labels_mask != 0
-        pred_logits = input[:,-1,...]
+        pred_logits = output.raw_rgb_and_mask[:,-1,...]
         pred_mask = pred_logits > 0.0
         mask_loss = self.bce_loss (pred_logits, fg_mask.float())
 
         correct_pred_fg_mask = torch.logical_and(pred_mask, fg_mask)
         bg_mask = torch.logical_not(correct_pred_fg_mask).unsqueeze(1) # B,1,H,W
         bg_mask_rgb = bg_mask.expand (-1,3,-1,-1) # B,3,H,W
-        input_rgb = input[:,:3,...] # remove the mask channel
-        fg_rgb_loss = self.regression_loss (input_rgb, batch.labels_rgb)
+        output_rgb = output.raw_rgb_and_mask[:,:3,...] # remove the mask channel
+        fg_rgb_loss = self.regression_loss (output_rgb, batch.labels_rgb)
         # better to set to zero rather than multiplying by the mask, it removes
         # the gradient entirely.
         fg_rgb_loss[bg_mask_rgb] = 0.0
@@ -305,15 +305,17 @@ class RegressionTrainer:
             for idx, sample in enumerate(sample_list):
                 sample_device = sample.to(self.device)
                 output = self._evaluate_single_item (sample_device)
-                output_rgb, output_mask = models_regression_gated.decode_gated_regression(output, sample_device.image)
-                output_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(output_rgb.detach().cpu())
-                output_mask = (output_mask > 0.0).float()
-                target_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(sample_device.labels_rgb.detach().cpu())                
+                output_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(output.rgb.detach().cpu())
+                output_mask = (output.mask > 0.0).float()
+                target_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(sample_device.labels_rgb.detach().cpu())
                 input_rgb = self.data.preprocessor.denormalize_and_clip_as_numpy(sample_device.image.detach().cpu())
                 log_and_save (f"{title}-{idx}-epoch{epoch}-input", input_rgb)
                 log_and_save (f"{title}-{idx}-epoch{epoch}-output", output_rgb)
                 log_and_save (f"{title}-{idx}-epoch{epoch}-output-mask", output_mask.cpu().numpy())
                 log_and_save (f"{title}-{idx}-epoch{epoch}-target", target_rgb)
+                # For debugging only.
+                # target_mask = (sample.labels_mask != 0).float()
+                # log_and_save (f"{title}-{idx}-epoch{epoch}-target-mask", target_mask.numpy())
         
         with evaluating(self.model), torch.no_grad():
             evaluate_images("Train Samples", self.data.monitored_train_samples)
@@ -329,13 +331,15 @@ class RegressionTrainer:
             self.xp.writer.add_scalars('accuracy_iter_fg', dict(val=val_fg_bg_accuracy[0]), self.global_step)
             self.xp.writer.add_scalars('accuracy_iter_bg', dict(val=val_fg_bg_accuracy[1]), self.global_step)
 
-    def _evaluate_batch(self, batch: Sample):
+    def _evaluate_batch(self, batch: Sample) -> ModelOutput:
         outputs = self.model(batch.image.to(self.device))
         return outputs
 
-    def _evaluate_single_item(self, item):
-        outputs = self.model(item.image.to(self.device).unsqueeze(0)).squeeze(0)
-        return outputs
+    def _evaluate_single_item(self, item) -> ModelOutput:
+        outputs: ModelOutput = self.model(item.image.to(self.device).unsqueeze(0))
+        return ModelOutput(rgb=outputs.rgb.squeeze(0),
+                           mask=outputs.mask.squeeze(0),
+                           raw_rgb_and_mask=outputs.raw_rgb_and_mask.squeeze(0))
 
     def _compute_epoch_validation(self):
         with evaluating(self.model), torch.no_grad():
@@ -444,6 +448,6 @@ if __name__ == "__main__":
 
     if not args.no_evaluation:
         similar_colors.main_batch_evaluation(root_dir / 'inputs' / 'tests',
-                                            trainer.model,
-                                            output_path=trainer.xp.log_path / 'evaluation',
-                                            save_images=True)
+                                             trainer.model,
+                                             output_path=trainer.xp.log_path / 'evaluation',
+                                             save_images=True)
