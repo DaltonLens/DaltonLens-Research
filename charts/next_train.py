@@ -16,7 +16,8 @@ def quick_validate():
             "python3", "scripts/train_regression_gated.py",
             f"quick",
 
-            "--loss", "mse",
+            # "--loss", "mse",
+            "--loss", "mse_and_fg_var",
 
             "--clean_previous",
 
@@ -79,16 +80,16 @@ if __name__ == "__main__":
 
     params_set = dict(
         # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
-        # model=["unet-rn18-rn18"],
-        model=["unet-rn18-rn18-sa"],
+        model=["unet-rn18-rn18"],
+        # model=["unet-rn18-rn18-sa"],
         # model=["unet-mobv2-large", "unet-mobv2-rn18", "unet-mobv2-medium"],
         # model=["uresnet18-sa-shuffle"],
         encoder_lr=["1e-5"],
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"],
-        # loss = ["mse_and_fg_var"],
-        loss = ["mse"],
+        loss = ["mse_and_fg_var"],
+        # loss = ["mse"],
 
         epochs = [(50, 200)],
         # epochs = [(20, 100)],

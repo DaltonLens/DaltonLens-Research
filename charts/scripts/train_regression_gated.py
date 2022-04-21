@@ -3,6 +3,7 @@
 import shutil
 import dlcharts
 from dlcharts.pytorch import models_regression_gated
+from dlcharts.pytorch.losses import rgb_variance_loss
 from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
 from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
@@ -148,10 +149,15 @@ class GatedLoss:
         self.bce_loss = nn.BCEWithLogitsLoss()
         self.regression_loss = regression_loss
 
-    def __call__(self, output: ModelOutput, batch: Sample) -> torch.Tensor:
-        fg_mask = batch.labels_mask != 0
+    def compute_prediction_mask(output: ModelOutput):
         pred_logits = output.raw_rgb_and_mask[:,-1,...]
         pred_mask = pred_logits > 0.0
+        return pred_mask, pred_logits
+
+    def __call__(self, output: ModelOutput, batch: Sample, pred_mask=None, pred_logits=None) -> torch.Tensor:
+        fg_mask = batch.labels_mask != 0
+        if pred_mask is None:
+            pred_mask, pred_logits = GatedLoss.compute_prediction_mask(output)
         mask_loss = self.bce_loss (pred_logits, fg_mask.float())
 
         correct_pred_fg_mask = torch.logical_and(pred_mask, fg_mask)
@@ -165,6 +171,25 @@ class GatedLoss:
         fg_rgb_loss = torch.sum(fg_rgb_loss) / torch.count_nonzero(correct_pred_fg_mask)
 
         return mask_loss + fg_rgb_loss
+
+class GatedLossWithVar:
+    def __init__(self, gated_loss: GatedLoss):
+        self.gated_loss = gated_loss
+
+    def __call__(self, output: ModelOutput, batch: Sample) -> torch.Tensor:
+        pred_mask, pred_logits = GatedLoss.compute_prediction_mask(output)
+        data_loss = self.gated_loss (output, batch, pred_mask, pred_logits)
+        
+        B = output.raw_rgb_and_mask.shape[0]
+        fg_label = batch.random_fg_label['label']
+        device = batch.labels_mask.device
+        # B,H,W compared to B,1,1 by broadcasting
+        fg_mask = batch.labels_mask == fg_label.view(B,1,1).to(device)
+        # Both are B,H,W
+        fg_var_mask = torch.logical_and(fg_mask, pred_mask)
+        var_loss = rgb_variance_loss (output.raw_rgb_and_mask[:,:3,...], fg_var_mask)
+
+        return data_loss + var_loss
 
 class RegressionTrainer:
     def __init__(self, params: Params, hparams: Hparams):
@@ -183,6 +208,7 @@ class RegressionTrainer:
         losses = dict(
             mse = GatedLoss(nn.MSELoss(reduction='none')),
             l1 = GatedLoss(nn.L1Loss(reduction='none')),
+            mse_and_fg_var = GatedLossWithVar(GatedLoss(nn.MSELoss(reduction='none')))
         )
         self.loss_fn = losses[hparams.loss]
         self.accuracy_fn = regression_accuracy
