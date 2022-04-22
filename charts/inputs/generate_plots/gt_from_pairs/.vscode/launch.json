@@ -1,0 +1,32 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "gt_from_pairs",
+            "type": "cppdbg",
+            "request": "launch",
+            // Resolved by CMake Tools:
+            "program": "${workspaceFolder}/build/gt_from_pairs",
+            "stopAtEntry": false,
+            "cwd": "${workspaceFolder}",            
+            "externalConsole": false,
+            "MIMode": "gdb",
+            "setupCommands": [
+                {
+                    "description": "Enable pretty-printing for gdb",
+                    "text": "-enable-pretty-printing",
+                    "ignoreFailures": true
+                }
+            ],
+            // "args": [ "--port", "4207" ],
+            "args": [ 
+                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train/opencv-generated/drawings/img-00000-000.labels.png",
+                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train/opencv-generated/drawings/img-00000-000.rendered.png"
+             ],
+            // "args": [ "/common/folderA/foo.png", "/common/folderB/foo.png" ]
+        },
+    ]
+}
