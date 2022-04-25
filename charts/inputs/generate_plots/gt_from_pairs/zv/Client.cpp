@@ -499,13 +499,17 @@ public:
     // Return the port where it could start.
     int start ()
     {
+        // FIXME: this is all quite fragile. A better way would be to start the zv binary
+        // until it's happy. But to detect that it's happy we'd need it to write some
+        // formatted text and read it here. So for now we just assume that if a port is free,
+        // then the zv server will start successfully.
         int validPort = findValidPort ();
         if (validPort < -1)
             return -1;
 
         std::string port_str = std::to_string(validPort);
         const char *const commandLine[] = {"zv", "--port", port_str.c_str(), "--require-server", NULL};
-        int result = subprocess_create(commandLine, subprocess_option_inherit_environment, &subprocess);
+        int result = subprocess_create(commandLine, subprocess_option_inherit_environment | subprocess_option_search_user_path, &subprocess);
         if (result != 0)
             return -1;
         return validPort;

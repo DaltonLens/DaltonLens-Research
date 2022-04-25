@@ -71,7 +71,10 @@ enum subprocess_option_e {
 
   // Enable the child process to be spawned with no window visible if supported
   // by the platform.
-  subprocess_option_no_window = 0x8
+  subprocess_option_no_window = 0x8,
+
+  // Search for program names in the PATH variable. Always enabled on Windows.
+  subprocess_option_search_user_path = 0x10
 };
 
 #if defined(__cplusplus)
@@ -784,7 +787,12 @@ int subprocess_create_ex(const char *const commandLine[], int options,
       environ = (char **)empty_environment;
     }
 
-    _Exit(execvp(commandLine[0], (char *const *)commandLine));
+    if (subprocess_option_search_user_path == (options & subprocess_option_search_user_path)) {
+      _Exit(execvp(commandLine[0], (char *const *)commandLine));  
+    }
+    else {
+      _Exit(execv(commandLine[0], (char *const *)commandLine));
+    }
 
 #ifdef __clang__
 #pragma clang diagnostic pop
