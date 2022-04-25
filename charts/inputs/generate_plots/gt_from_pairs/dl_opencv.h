@@ -24,5 +24,13 @@ inline bool operator< (const cv::Vec3b& lhs, const cv::Vec3b& rhs)
     return false;
 }
 
+struct vec3b_hash
+{
+    std::size_t operator() (const cv::Vec3b& v) const
+    {
+        return std::hash<uint8_t>()(v[0]) ^ std::hash<uint8_t>()(v[1]) ^ std::hash<uint8_t>()(v[2]);
+    }
+};
+
 } // cv
 

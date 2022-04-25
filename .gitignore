@@ -1,6 +1,6 @@
 charts/inputs/*generated/
 charts/inputs/tests/**/*.png
-charts/inputs/train/**/*.png
+charts/inputs/train*/**/*.png
 *-generated/
 *-generated-*/
 charts/experiments/

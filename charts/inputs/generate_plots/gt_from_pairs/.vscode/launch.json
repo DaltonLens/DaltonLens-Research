@@ -23,8 +23,8 @@
             ],
             // "args": [ "--port", "4207" ],
             "args": [ 
-                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train/opencv-generated/drawings/img-00000-000.labels.png",
                 "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train/opencv-generated/drawings/img-00000-000.rendered.png"
+                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train/opencv-generated/drawings/img-00000-000.aliased.png",
              ],
             // "args": [ "/common/folderA/foo.png", "/common/folderB/foo.png" ]
         },
