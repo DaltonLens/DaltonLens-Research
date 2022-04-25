@@ -504,7 +504,7 @@ public:
             return -1;
 
         std::string port_str = std::to_string(validPort);
-        const char *const commandLine[] = {"/home/nb/mbin/zv", "--port", port_str.c_str(), "--require-server"};
+        const char *const commandLine[] = {"zv", "--port", port_str.c_str(), "--require-server", NULL};
         int result = subprocess_create(commandLine, subprocess_option_inherit_environment, &subprocess);
         if (result != 0)
             return -1;
@@ -535,7 +535,7 @@ bool launchServer ()
     if (validPort < 0)
         return false;
 
-    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
     Client& client = Client::instance();
     for (int i = 0; i < 10; ++i)
     {
