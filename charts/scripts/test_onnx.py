@@ -33,7 +33,7 @@ print(onnx.helper.printable_graph(model.graph))
 
 device = torch.device("cpu")
 preprocessor = cr.ImagePreprocessor(device)
-image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLensPrivate/charts/inputs/tests/mpl-generated/img-00000.rendered.png", cv2.IMREAD_COLOR))
+image_rgb = swap_rb(cv2.imread("/home/nb/Perso/DaltonLensPrivate/charts/inputs/tests/mpl-generated/img-00000.antialiased.png", cv2.IMREAD_COLOR))
 input_tensor = preprocessor.transform (image_rgb, image_rgb)[0]
 input_tensor.unsqueeze_ (0) # add the batch dim
 

@@ -65,7 +65,21 @@ int main (int argc, char** argv)
 
     logImage ("mask_changed", mask_changed);
     
-    int next_label = 16;
+    std::vector<int> ordered_labels;
+    ordered_labels.reserve(255);
+    // First add multiples of 16 so we can see something.
+    for (int i = 16; i < 256; i += 16)
+    {
+        ordered_labels.push_back(i);
+    }
+    // If that's not enough, keep filling with the intermediate values.
+    for (int i = 1; i < 256; ++i)
+    {
+        if (i % 16 != 0)
+            ordered_labels.push_back(i);
+    }
+
+    auto next_label_it = ordered_labels.begin();
     std::unordered_map<cv::Vec3b, int, cv::vec3b_hash> label_map;
     
     
@@ -84,10 +98,15 @@ int main (int argc, char** argv)
             auto label_it = label_map.find (color);
             if (label_it == label_map.end())
             {
-                label = next_label;
-                label_map.insert (std::make_pair (color, next_label));
+                label = *next_label_it;
+                label_map.insert (std::make_pair (color, *next_label_it));
                 finalLabels.push_back (std::make_pair(label, color));
-                next_label += 16;
+                ++next_label_it;
+                if (next_label_it == ordered_labels.end())
+                {
+                    std::cerr << "Too many labels, aborting." << std::endl;
+                    return 1;
+                }
             }
             else
             {

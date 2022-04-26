@@ -25,7 +25,7 @@ class LabeledImage:
         self.json_file = json_file
         with open(json_file, 'r') as f:
             self.json = json.load(f)
-        self.rendered_file = json_file.with_suffix('.rendered.png')
+        self.rendered_file = json_file.with_suffix('.antialiased.png')
         self.labels_file = json_file.with_suffix('.labels.png')
         self.labels_image = None
         self.labels_as_rgb = None

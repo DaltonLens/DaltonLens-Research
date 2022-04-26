@@ -73,7 +73,7 @@
                 "regression_unetres_v3_scripted.pt",
                 // "--baseline",
                 "--easy",
-                // "--image", "inputs/opencv-generated/drawings-test/img-00001-000.rendered.png",
+                // "--image", "inputs/opencv-generated/img-00001-000.antialiased.png",
             ],
         },
         {

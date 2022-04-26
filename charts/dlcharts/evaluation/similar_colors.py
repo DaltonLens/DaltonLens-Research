@@ -329,7 +329,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
                 # FIXME: don't load the finder for every frame, that's expensive for torchscript!
                 finder = DeepRegressionFinder(im.rendered_image, model)
             if save_images:
-                cv2.imwrite (str(output_folder_path / json_file.with_suffix('.rendered.png').name), swap_rb(finder.image_rgb))
+                cv2.imwrite (str(output_folder_path / json_file.with_suffix('.antialiased.png').name), swap_rb(finder.image_rgb))
             results = evaluate (im, finder, easy_mode=easy_mode)
             percent_good.append (results.percentage_good)
         result_per_folder[folder] = np.mean (percent_good)

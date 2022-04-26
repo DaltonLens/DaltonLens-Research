@@ -259,7 +259,7 @@ if __name__ == "__main__":
         prefix = str(args.output_dir / f"img-{i:05d}")
 
         # cv2 expects bgr
-        cv2.imwrite(prefix + '.rendered.png', swap_rb(rendered))
+        cv2.imwrite(prefix + '.antialiased.png', swap_rb(rendered))
         cv2.imwrite(prefix + '.labels.png', labels)
         with open(prefix + '.json', 'w') as f:
             f.write (json.dumps(jsonEntries))
