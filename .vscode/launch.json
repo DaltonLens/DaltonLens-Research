@@ -89,5 +89,18 @@
                 "output.scripted.pt"
             ],
         },
+
+        {
+            "name": "Extract Arxiv",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts/inputs/arxiv/data",
+            "program": "${workspaceFolder}/charts/inputs/arxiv/extract_arxiv_figures.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "2203",
+            ],
+        },
     ]
 }

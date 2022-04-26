@@ -12,8 +12,11 @@ mutool draw -O text=path -o "$1".svg "$1" 1
 cairosvg "$1".svg -o "$1"_textpath.pdf
 
 # gs is the only one really filling any pixel that gets touched by a path.
-gs -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.antialiased.png" -dGraphicsAlphaBits=4 -dTextAlphaBits=1 "$1"_textpath.pdf
-gs -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.aliased.png" -dGraphicsAlphaBits=1 -dTextAlphaBits=1 "$1"_textpath.pdf
+gs -r72 -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.r72.antialiased.png" -dGraphicsAlphaBits=4 -dTextAlphaBits=1 "$1"_textpath.pdf
+gs -r72 -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.r72.aliased.png" -dGraphicsAlphaBits=1 -dTextAlphaBits=1 "$1"_textpath.pdf
+
+gs -r56 -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.r56.antialiased.png" -dGraphicsAlphaBits=4 -dTextAlphaBits=1 "$1"_textpath.pdf
+gs -r56 -dNOPAUSE -dBATCH -sDEVICE=png16m -sOutputFile="$1.r56.aliased.png" -dGraphicsAlphaBits=1 -dTextAlphaBits=1 "$1"_textpath.pdf
 
 # 72 dpi is the default for pdf. This will keep the page size unchanged.
 # scale_to=`identify -format '-scale-to-x %w -scale-to-y %h' "$1.aliased_gs.png"`
