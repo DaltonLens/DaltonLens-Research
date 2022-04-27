@@ -36,11 +36,12 @@ int main (int argc, char** argv)
         return 1;
     }
 
-    // if (!zv::launchServer ())
-    // {
-    //     std::cerr << "Could not launch zv" << std::endl;
-    //     return 2;
-    // }
+    const bool debug = false;
+    if (debug && !zv::launchServer ())
+    {
+        std::cerr << "Could not launch zv" << std::endl;
+        return 2;
+    }
     
     std::string fileprefix = argv[1];
 
@@ -73,7 +74,7 @@ int main (int argc, char** argv)
         ordered_labels.push_back(i);
     }
     // If that's not enough, keep filling with the intermediate values.
-    for (int i = 1; i < 256; ++i)
+    for (int i = 1; i < 255; ++i)
     {
         if (i % 16 != 0)
             ordered_labels.push_back(i);
@@ -90,7 +91,7 @@ int main (int argc, char** argv)
     cv::Mat1b label_image (rows, cols);
     for_all_rc (mask_changed)
     {
-        int label = 0;
+        int label = 255; // means unassigned. 0 means background.
 
         if (mask_changed(r,c))
         {
@@ -117,7 +118,62 @@ int main (int argc, char** argv)
         label_image(r,c) = label;
     }
 
-    logImage ("labels", label_image);
+    logImage ("labels_before_fill", label_image);
+
+    const bool fillFgMask = true;
+    if (fillFgMask)
+    {
+        std::deque<cv::Point> fgPoints;
+
+        auto enqueue_neighbs = [&](int r, int c) {
+            for (int dr = -1; dr <= 1; ++dr)
+            for (int dc = -1; dc <= 1; ++dc)
+            {
+                if (dr == 0 && dc == 0)
+                    continue;
+                int nr = r + dr;
+                int nc = c + dc;
+                if (nr < 0 || nr >= label_image.rows || nc < 0 || nc >= label_image.cols)
+                    continue;
+                if (label_image(nr,nc) == 255)
+                    fgPoints.push_back (cv::Point(nc,nr));
+            }
+        };
+
+        for_all_rc (label_image)
+        {
+            if (label_image(r,c) != 255)
+            {
+                enqueue_neighbs (r,c);
+            }
+        }
+
+        while (!fgPoints.empty())
+        {
+            cv::Point p = fgPoints.front();
+            fgPoints.pop_front();
+            auto label_it = label_map.find (aliased(p.y,p.x));
+            if (label_it == label_map.end())
+            {
+                label_image(p.y,p.x) = 0; // background.
+                continue;
+            }
+
+            label_image(p.y,p.x) = label_it->second;
+            enqueue_neighbs(p.y, p.x);
+        }
+    }
+
+    // All remaining unknown pixels are background
+    for_all_rc (label_image)
+    {
+        if (label_image(r,c) == 255)
+        {
+            label_image(r,c) = 0;
+        }
+    }
+
+    logImage ("labels_after_fill", label_image);
 
     std::string jsonFile;
     jsonFile += "{";
