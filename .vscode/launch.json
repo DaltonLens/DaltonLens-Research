@@ -102,5 +102,19 @@
                 "2203",
             ],
         },
+
+        {
+            "name": "dataset_from_figures.py",
+            "type": "python",
+            "request": "launch",
+            "cwd": "${workspaceFolder}/charts/inputs/arxiv",
+            "program": "${workspaceFolder}/charts/inputs/arxiv/dataset_from_figures.py",
+            "justMyCode": false,
+            "console": "integratedTerminal",
+            "args": [
+                "data/selected_pdfs/2203", 
+                "arxiv_2203"
+            ],
+        },
     ]
 }

@@ -50,7 +50,7 @@ class App:
             shutil.copy(in_pdf, out_pdf)
             print (f'Copied {image_file} to {self.args.output_dir}')
         elif out_png.exists():
-            print ("Removing the files that were already copied.")
+            print ("Removing {image_file}.")
             out_png.unlink()
             out_pdf.unlink()
         self.viewer.runAction (zv.ImageWindowAction.View_NextImage)
