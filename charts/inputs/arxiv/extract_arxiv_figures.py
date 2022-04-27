@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
-import multiprocessing
 import os
 from typing import Dict, List
 from pathlib import Path
+import multiprocessing
 from subprocess import run
 import shutil
 import numpy as np
@@ -15,6 +15,7 @@ import fitz
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Extract relevant figures from axiv articles')
     parser.add_argument('input_dir', help='Input folder with the arxiv gz files.', type=Path)
+    parser.add_argument('output_dir', help='Output folder for the filtered figures.', type=Path)
     args = parser.parse_args()
     return args
 
@@ -69,7 +70,7 @@ def process_gz_file (gzfile: Path, raw_pdf_dir: Path, args):
 def main ():
     args = parse_command_line()
     gzfiles = args.input_dir.glob('**/*.gz')
-    raw_pdf_dir = Path('raw_pdfs')
+    raw_pdf_dir = args.output_dir
     raw_pdf_dir.mkdir(exist_ok=True)
 
     with multiprocessing.Pool(8) as pool:

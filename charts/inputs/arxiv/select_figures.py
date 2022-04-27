@@ -21,6 +21,7 @@ def parse_command_line():
 class App:
     def __init__(self, args):
         self.args = args
+        self.args.output_dir.mkdir(parents=True, exist_ok=True)
         self.app = zv.App()
         files = sorted([str(p) for p in self.args.input_dir.glob('**/*.png')])
         self.app.initialize(["zv"] + files)
