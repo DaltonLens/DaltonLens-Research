@@ -12,6 +12,8 @@ import tempfile
 
 import fitz
 
+from .filter_figures import filter_pdf
+
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Extract relevant figures from axiv articles')
     parser.add_argument('input_dir', help='Input folder with the arxiv gz files.', type=Path)
@@ -21,32 +23,6 @@ def parse_command_line():
 
 def is_gray (r,g,b):
     return np.isclose(r,g) and np.isclose(g,b)
-
-def filter_pdf(pdf_file):
-    try:
-        doc = fitz.open (pdf_file)
-    except:
-        return None
-    if doc.page_count != 1:
-        return None
-    box = doc.page_cropbox(0)
-    w, h = box.width, box.height
-    if (w < 200 or w > 1600):
-        return None
-    page = doc.load_page(0)
-    drawings = page.get_cdrawings()
-    if len(drawings) < 5 or len(drawings) > 4096:
-        return None
-    colors = set()
-    for d in drawings:
-        if 'color' in d:
-            color = d['color']
-            if not is_gray(*color):
-                colors.add(str(color))
-    if len(colors) < 3 or len(colors) > 64:
-        return None
-    print (f"{pdf_file} #{len(drawings)}")
-    return page.get_pixmap()
 
 def process_gz_file (gzfile: Path, raw_pdf_dir: Path, args):
     with tempfile.TemporaryDirectory() as tmp_dirname:
@@ -58,7 +34,7 @@ def process_gz_file (gzfile: Path, raw_pdf_dir: Path, args):
         # run(["ls", "-lhR", tmp_dir])
         pdf_files = tmp_dir.glob('**/*.pdf')
         for pdf in pdf_files:
-            pixmap = filter_pdf(pdf)
+            pixmap = filter_pdf(pdf, need_pixmap=True)
             if not pixmap:
                 continue
             outpdf = raw_pdf_dir / (tar_file.name + '_' + pdf.name)

@@ -42,7 +42,7 @@ int main (int argc, char** argv)
         return 1;
     }
 
-    const bool debug = true;
+    const bool debug = false;
     if (debug && !zv::launchServer ())
     {
         std::cerr << "Could not launch zv" << std::endl;
