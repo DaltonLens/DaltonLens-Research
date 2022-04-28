@@ -15,11 +15,13 @@ from xmlrpc.client import Boolean
 import cv2
 from dlcharts.common.utils import printBold
 import numpy as np
-from typing import Tuple
+from typing import Tuple, Dict
 from dataclasses import dataclass
 from itertools import chain
 import tempfile
 from types import SimpleNamespace
+import random
+import time
 
 import dataset_from_preselection
 
@@ -39,12 +41,37 @@ def bg_color_is_white(jsonDict):
             return labelDict['rgb_color'] == [255, 255, 255]
     return False
 
+def color_are_similar(color1, color2, threshold):
+    for k in range(0,3):
+        if abs(color1[k] - color2[k]) < threshold:
+            return True
+    return False
+
+def find_different_color(jsonDict: Dict):
+    existing_colors = []
+    for labelDict in jsonDict['labels']:
+        existing_colors.append (labelDict['rgb_color'])
+    chosen_color = None
+    for i in range(0, 256):
+        cand_color = [random.randint(0, 255) for k in range(0,3)]
+        unique = True
+        for other_color in existing_colors:
+            if color_are_similar(other_color, cand_color, 30):
+                unique = False
+                break
+        if unique:
+            chosen_color = cand_color
+            break
+            
+    return rgb_to_hex(chosen_color) if chosen_color else None
+
 def rgb_to_hex(rgb):
     return '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])
 
 def main ():
     args = parse_command_line()
-    
+    random.seed(time.time_ns())
+
     tempdir = args.input_dir / "tmp"
     tempdir.mkdir(exist_ok=True, parents=True)
 
@@ -74,8 +101,11 @@ def main ():
             print (f"Error: could not find {svg_file_aa}")
             continue
         
-        out_svg = tempdir / svg_file_aa.name
-        new_bg_color = rgb_to_hex([255, 255, 0])
+        out_svg = tempdir / svg_file_aa.name        
+        new_bg_color = find_different_color(jsonDict)
+        if new_bg_color is None:
+            print ("Could not find a compatible color, skipping.")
+            continue
         print (new_bg_color)
 
         with open(svg_file_aa, 'r') as f_in, open(out_svg, 'w') as f_out:
