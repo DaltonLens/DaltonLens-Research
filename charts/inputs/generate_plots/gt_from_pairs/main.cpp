@@ -70,8 +70,19 @@ int main (int argc, char** argv)
         mask_changed(r,c) = changed ? 255 : 0;
     }
 
-    // logImage ("mask_changed", mask_changed);
+    logImage ("mask_changed", mask_changed);
+    cv::Mat1b mask_background = 255 - mask_changed;
     
+    cv::Mat1f dist_from_change_1f;
+    cv::distanceTransform(mask_background, dist_from_change_1f, cv::DIST_L2, 3);
+    cv::Mat1b dist_from_change (rows, cols);
+    for_all_rc (dist_from_change)
+    {
+        dist_from_change(r,c) = int(std::min(dist_from_change_1f(r,c), 255.0f) + 0.5f);
+    }
+    
+    logImage ("dist_from_change", dist_from_change);
+
     std::vector<int> ordered_labels;
     ordered_labels.reserve(255);
     // First add multiples of 16 so we can see something.
@@ -184,6 +195,9 @@ int main (int argc, char** argv)
         for_all_rc (label_image)
         {
             if (label_image(r,c) != 255)
+                continue;
+                        
+            if (dist_from_change(r,c) > 2)
                 continue;
             
             auto label_it = label_map.find (aliased(r,c));

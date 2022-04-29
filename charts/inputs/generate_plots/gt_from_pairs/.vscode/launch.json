@@ -23,7 +23,9 @@
             ],
             // "args": [ "--port", "4207" ],
             "args": [ 
-                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train-old-filledmask/opencv-generated/drawings/img-00000-000"
+                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train-old-filledmask/opencv-generated/drawings/img-00000-000.antialiased.png",
+                "/home/nb/Perso/DaltonLensPrivate/charts/inputs/train-old-filledmask/opencv-generated/drawings/img-00000-000.aliased.png",
+                "/home/nb/tmp/tmp",
              ],
             // "args": [ "/common/folderA/foo.png", "/common/folderB/foo.png" ]
         },

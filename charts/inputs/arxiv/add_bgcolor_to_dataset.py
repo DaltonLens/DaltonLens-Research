@@ -123,7 +123,5 @@ def main ():
         val_args.preselection_dir = tempdir
         dataset_from_preselection.main (val_args)
 
-        break
-
 if __name__ == "__main__":
     main ()

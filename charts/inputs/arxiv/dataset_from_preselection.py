@@ -18,6 +18,8 @@ from dataclasses import dataclass
 from itertools import chain
 import tempfile
 
+from icecream import ic
+
 import zv
 
 script_path = Path(os.path.dirname(os.path.realpath(sys.argv[0])))
@@ -99,6 +101,8 @@ def replace_substrings(s, spans):
     return out_s
 
 def set_svg_min_stroke_width(svg_in, svg_out):
+    ic (svg_in)
+    ic (svg_out)
     with open(svg_in, 'r') as f, open(svg_out, 'w') as f_out:
         for l in f:
             spans = []
@@ -224,7 +228,7 @@ def main (args):
         result = validator.validate (out_pdf)
         if result == Result.SKIP:
             print ("Skipped.")
-            for f in tempdir:
+            for f in tempdir.glob(out_pdf.with_suffix('').name + '*'):
                 f.unlink ()
             continue
         validated = (result == Result.ACCEPT)
