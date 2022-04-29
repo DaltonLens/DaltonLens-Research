@@ -139,67 +139,15 @@ int main (int argc, char** argv)
         label_image(r,c) = label;
     }
 
-    // logImage ("labels_before_fill", label_image);
+    logImage ("labels_before_fill", label_image);
 
-    const bool fillFgMaskWithQueue = false;
-    if (fillFgMaskWithQueue)
-    {
-        std::deque<cv::Point> fgPoints;
-
-        auto enqueue_neighbs = [&](int r, int c) {
-            for (int dr = -1; dr <= 1; ++dr)
-            for (int dc = -1; dc <= 1; ++dc)
-            {
-                if (dr == 0 && dc == 0)
-                    continue;
-                int nr = r + dr;
-                int nc = c + dc;
-                if (nr < 0 || nr >= label_image.rows || nc < 0 || nc >= label_image.cols)
-                    continue;
-                if (label_image(nr,nc) == 255)
-                    fgPoints.push_back (cv::Point(nc,nr));
-            }
-        };
-
-        for_all_rc (label_image)
-        {
-            if (label_image(r,c) != 255)
-            {
-                enqueue_neighbs (r,c);
-            }
-        }
-
-        while (!fgPoints.empty())
-        {
-            cv::Point p = fgPoints.front();
-            fgPoints.pop_front();
-
-            // A neighbor can be added several times.
-            if (label_image(p.y,p.x) != 255)
-                continue;
-
-            auto label_it = label_map.find (aliased(p.y,p.x));
-            if (label_it == label_map.end())
-            {
-                label_image(p.y,p.x) = 0; // background.
-                continue;
-            }
-
-            label_image(p.y,p.x) = label_it->second.label;
-            label_it->second.count += 1;
-            enqueue_neighbs(p.y, p.x);
-        }
-    }
-    else if (true)
+    // Fill pixels that did not change
     {
         for_all_rc (label_image)
         {
             if (label_image(r,c) != 255)
                 continue;
                         
-            if (dist_from_change(r,c) > 2)
-                continue;
-            
             auto label_it = label_map.find (aliased(r,c));
             if (label_it != label_map.end())
             {
@@ -251,6 +199,16 @@ int main (int argc, char** argv)
     }
 
     logImage ("labels_after_fill", label_image);
+
+    // Make sure that pixels that are far from a change are all
+    // marked as background.
+    for_all_rc (label_image)
+    {
+        if (dist_from_change(r,c) > 2)
+            label_image (r,c) = 0;
+    }
+
+    logImage ("labels_after_dist", label_image);
 
     std::string jsonFile;
     jsonFile += "{";
