@@ -87,12 +87,6 @@ def main ():
         if not bg_color_is_white(jsonDict):
             print ("Background is not white, skipping.")
             continue            
-
-        if (output_dir / 'validated' / json_file.with_suffix('.pdf')).exists():
-            continue
-
-        if (output_dir / 'discarded' / json_file.with_suffix('.pdf')).exists():
-            continue
         
         print (f"Processing {json_file}")
 
@@ -101,7 +95,21 @@ def main ():
             print (f"Error: could not find {svg_file_aa}")
             continue
         
-        out_svg = tempdir / svg_file_aa.name        
+        # Always flush the temp dir before processing a new guy to avoid
+        # previous datasets to creep in.
+        for f in tempdir.iterdir():
+            f.unlink()
+
+        out_svg = tempdir / svg_file_aa.name.replace('.aa.','.bg.')
+        out_pdf = out_svg.with_suffix('.pdf')
+        print('out_pdf', out_pdf)
+
+        if (output_dir / 'validated' / out_pdf.name).exists():
+            continue
+
+        if (output_dir / 'discarded' / out_pdf.name).exists():
+            continue
+
         new_bg_color = find_different_color(jsonDict)
         if new_bg_color is None:
             print ("Could not find a compatible color, skipping.")
@@ -114,7 +122,7 @@ def main ():
                 if l.startswith('<g enable-background'):
                     f_out.write(f'<rect width="100%" height="100%" fill="{new_bg_color}"/>\n')
 
-        run(["cairosvg", out_svg, "-o", out_svg.with_suffix('.pdf')])
+        run(["cairosvg", out_svg, "-o", out_pdf])
         out_svg.unlink ()
 
         val_args = SimpleNamespace()

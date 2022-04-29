@@ -124,17 +124,17 @@ def render_pdf(pdf_file: Path, out_dir):
     out_r72_aliased = out_dir / pdf_file.with_suffix('.r72.aliased.png').name
     out_r56_antialiased = out_dir / pdf_file.with_suffix('.r56.antialiased.png').name
     out_r56_aliased = out_dir / pdf_file.with_suffix('.r56.aliased.png').name
-    run(["mutool", "draw", "-O", "text=path", "-o", svg_file_aa, pdf_file, "1"], stdout=DEVNULL)
+    run(["mutool", "draw", "-O", "text=path", "-o", svg_file_aa, pdf_file, "1"], stdout=DEVNULL, check=True)
 
     set_svg_min_stroke_width(svg_file_aa, svg_file_aliased)
 
-    run(["cairosvg", svg_file_aa, "-o", pdf_text_as_path_aa])
-    run(["cairosvg", svg_file_aliased, "-o", pdf_text_as_path_aliased])
+    run(["cairosvg", svg_file_aa, "-o", pdf_text_as_path_aa], check=True)
+    run(["cairosvg", svg_file_aliased, "-o", pdf_text_as_path_aliased], check=True)
 
-    run(["gs", "-r72", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r72_antialiased}", "-dGraphicsAlphaBits=4", "-dTextAlphaBits=1", pdf_text_as_path_aa], stdout=DEVNULL)
-    run(["gs", "-r72", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r72_aliased}", "-dGraphicsAlphaBits=1", "-dTextAlphaBits=1", pdf_text_as_path_aliased], stdout=DEVNULL)
-    run(["gs", "-r56", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r56_antialiased}", "-dGraphicsAlphaBits=4", "-dTextAlphaBits=1", pdf_text_as_path_aa], stdout=DEVNULL)
-    run(["gs", "-r56", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r56_aliased}", "-dGraphicsAlphaBits=1", "-dTextAlphaBits=1", pdf_text_as_path_aliased], stdout=DEVNULL)
+    run(["gs", "-r72", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r72_antialiased}", "-dGraphicsAlphaBits=4", "-dTextAlphaBits=1", pdf_text_as_path_aa], stdout=DEVNULL, check=True)
+    run(["gs", "-r72", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r72_aliased}", "-dGraphicsAlphaBits=1", "-dTextAlphaBits=1", pdf_text_as_path_aliased], stdout=DEVNULL, check=True)
+    run(["gs", "-r56", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r56_antialiased}", "-dGraphicsAlphaBits=4", "-dTextAlphaBits=1", pdf_text_as_path_aa], stdout=DEVNULL, check=True)
+    run(["gs", "-r56", "-dNOPAUSE", "-dBATCH", "-sDEVICE=png16m", f"-sOutputFile={out_r56_aliased}", "-dGraphicsAlphaBits=1", "-dTextAlphaBits=1", pdf_text_as_path_aliased], stdout=DEVNULL, check=True)
     im = cv2.imread(str(out_r72_antialiased))
     rows = im.shape[0]
     cols = im.shape[1]
@@ -179,7 +179,7 @@ class Validator:
         self.viewer.setGlobalEventCallback (callback, None)
         self.viewer.setLayout(2,3)
         
-        png_files = sorted(pdf_file.parent.glob(pdf_file.with_suffix('').name + '*.png'))
+        png_files = sorted(pdf_file.parent.glob(pdf_file.with_suffix('').name + '.*.png'))
         for png_file in png_files:
             self.viewer.addImageFromFile(str(png_file), False)
         self.viewerDone = False
@@ -228,15 +228,25 @@ def main (args):
         result = validator.validate (out_pdf)
         if result == Result.SKIP:
             print ("Skipped.")
-            for f in tempdir.glob(out_pdf.with_suffix('').name + '*'):
+            for f in tempdir.glob(out_pdf.with_suffix('').name + '.*'):
                 f.unlink ()
             continue
         validated = (result == Result.ACCEPT)
-        source_files = pdf_file.parent.glob(pdf_file.with_suffix('').name + '*')
-        generated_files = out_pdf.parent.glob(out_pdf.with_suffix('').name + '*')
-        for f in chain(source_files, generated_files):
+        source_files = [pdf_file]
+        png_file = pdf_file.with_suffix('.png')
+        if png_file.exists():
+            source_files.append (png_file)
+        generated_files = list(out_pdf.parent.glob(out_pdf.with_suffix('').name + '.*'))
+        files_to_copy = set(source_files) | set(generated_files)
+        for f in files_to_copy:
             target_dir = out_validated_dir if validated else out_discarded_dir
-            shutil.move (str(f), str(target_dir))
+            try:
+                shutil.move (str(f), str(target_dir))
+            except Exception as e:
+                print ('source_files:', list(source_files))
+                print ('generated_files: ', generated_files)
+                print ('files_to_copy: ', files_to_copy)
+                raise e
 
 if __name__ == "__main__":
     args = parse_command_line()
