@@ -86,7 +86,8 @@ class LabeledImage:
         self.labels_as_rgb = labels_lut[self.labels_image]
         
         # Grab the background from the original image.
-        background_mask = self.labels_as_rgb == labels_lut[0]
+        background_mask = np.all(self.labels_as_rgb == labels_lut[0])
+        background_mask = np.expand_dims(background_mask, axis=-1)
         self.labels_as_rgb = np.where(background_mask, self.rendered_image, self.labels_as_rgb)
 
         if debug:
