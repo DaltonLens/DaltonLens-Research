@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 
 import shutil
+import bisect
 import dlcharts
 from dlcharts.pytorch import models_regression_gated
 from dlcharts.pytorch.losses import rgb_variance_loss
 from torchmetrics import Accuracy
 import dlcharts.pytorch.color_regression as cr
-from dlcharts.pytorch.utils import is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
+from dlcharts.pytorch.utils import ClusteredBatchRandomSampler, ClusteredDataset, is_google_colab, num_trainable_parameters, debugger_is_active, evaluating, Experiment
 from dlcharts.common.utils import InfiniteIterator, printBold, swap_rb
 from dlcharts.evaluation import similar_colors
 
@@ -14,7 +15,7 @@ import torch
 from torch.nn import functional as F
 from torch import nn
 
-from torch.utils.data import Dataset, DataLoader, random_split, SubsetRandomSampler
+from torch.utils.data import Dataset, DataLoader, random_split, SubsetRandomSampler, BatchSampler
 import torch.utils.tensorboard
 
 import numpy as np
@@ -23,7 +24,7 @@ import cv2
 from icecream import ic
 
 import argparse
-from typing import Optional, List
+from typing import Dict, Optional, List
 from pathlib import Path
 from enum import Enum
 import logging
@@ -87,40 +88,53 @@ class DrawingsData:
         self.params = params
         self.hparams = hparams
         self.preprocessor = cr.ImagePreprocessor(None, target_size=192)
-        datasets = [cr.ColorRegressionImageDataset(path, self.preprocessor) for path in dataset_path]
-        self.dataset = torch.utils.data.ConcatDataset(datasets)
         
         self.generator = torch.Generator().manual_seed(42)
         self.np_gen = np.random.default_rng(42)
 
-        if params.overfit != 0:
-            indices = self.np_gen.choice(range(0, len(self.dataset)), size=params.overfit + 1, replace=False)
-            self.dataset = torch.utils.data.Subset(self.dataset, indices)
+        self.datasets = [cr.ColorRegressionImageDataset(path, self.preprocessor) for path in dataset_path]
+
+        # if params.overfit != 0:
+        #     indices = self.np_gen.choice(range(0, len(self.dataset)), size=params.overfit + 1, replace=False)
+        #     self.dataset = torch.utils.data.Subset(self.dataset, indices)
         self.create ()
 
-    def create(self):
-        if params.overfit != 0:
-            n_train = params.overfit
-            n_val = len(self.dataset) - n_train
+    def split_dataset (self, dataset, train_ratio):
+        if self.hparams.overfit != 0:
+            n_train = self.hparams.overfit
+            n_val = min(len(dataset) - n_train, self.hparams.overfit)
         else:
-            n_train = max(int(len(self.dataset) * 0.7), 1)
+            n_train = max(int(len(dataset) * train_ratio), 1)
             n_val = len(self.dataset) - n_train
 
         all_indices = np.array(range(0, len(self.dataset)))
         self.np_gen.shuffle(all_indices)
 
         train_indices = all_indices[0:n_train]
-        val_indices = all_indices[n_train:]
+        val_indices = all_indices[n_train:n_train+n_val]
 
-        self.train_dataset = torch.utils.data.Subset(self.dataset, train_indices)
-        self.val_dataset = torch.utils.data.Subset(self.dataset, val_indices)
+        train_dataset = torch.utils.data.Subset(dataset, train_indices)
+        val_dataset = torch.utils.data.Subset(dataset, val_indices)
+        train_dataset.cluster_index = dataset.cluster_index
+        val_dataset.cluster_index = dataset.cluster_index
+        return train_dataset, val_dataset
 
-        self.train_dataloader = DataLoader(self.train_dataset, shuffle=True, batch_size=self.hparams.batch_size, num_workers=WORKERS)
-        self.val_dataloader = DataLoader(self.val_dataset, shuffle=False, batch_size=self.hparams.batch_size, num_workers=WORKERS)
+    def create(self):
+        train_val_datasets = [self.split_dataset(ds, 0.7) for ds in self.datasets]
+        self.train_dataset = ClusteredDataset([ds[0] for ds in train_val_datasets])
+        self.val_dataset = ClusteredDataset([ds[1] for ds in train_val_datasets])
 
-        self.val_dataloader_for_training_step = DataLoader(self.val_dataset, shuffle=False, batch_size=self.hparams.batch_size, num_workers=WORKERS)
+        train_sampler = ClusteredBatchRandomSampler(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True)
+        val_sampler = ClusteredBatchRandomSampler(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=False)
+        self.train_dataloader = DataLoader(self.train_dataset, batch_sampler=train_sampler, num_workers=WORKERS)
+        self.val_dataloader = DataLoader(self.val_dataset, batch_sampler=val_sampler, num_workers=WORKERS)
+
+        val_sampler_for_training_step = ClusteredBatchRandomSampler(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=False)
+        self.val_dataloader_for_training_step = DataLoader(self.val_dataset, batch_sampler=val_sampler_for_training_step, num_workers=WORKERS)
 
         # They are shuffled, so we're fine.
+        n_train = len(self.train_dataset)
+        n_val = len(self.val_dataset)
         self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
         self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
 
@@ -439,7 +453,7 @@ if __name__ == "__main__":
     # Alternative assuming a good cwd folder.
     # root_dir = Path().absolute()
     datasets_path = [
-        root_dir / 'inputs' / 'train' / 'opencv-generated' / 'drawings',
+        root_dir / 'inputs' / 'train' / 'opencv-generated',
         root_dir / 'inputs' / 'train' / 'opencv-generated-background',
         root_dir / 'inputs' / 'train' / 'mpl-generated',
         root_dir / 'inputs' / 'train' / 'mpl-generated-no-antialiasing',

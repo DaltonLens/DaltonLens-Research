@@ -39,7 +39,9 @@ for f in *.aliased.png; do
     ((i=i%N)); ((i++==0)) && wait
     {
         if ! test -f "${f%.aliased.png}.json"; then
-            "${HERE_DIR}/../generate_plots/gt_from_pairs/build/gt_from_pairs" "${f%.aliased.png}"
+            output_prefix="${f%.aliased.png}"
+            antialiased="${f%.aliased.png}.antialiased.png"
+            "${HERE_DIR}/../generate_plots/gt_from_pairs/build/gt_from_pairs" "$antialiased" "$f" "$output_prefix"
         fi
         echo -n '.'        
     } &

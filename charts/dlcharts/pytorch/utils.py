@@ -2,6 +2,8 @@ import torch
 import torch.nn
 import torch.optim
 
+from torch.utils.data import Dataset, ConcatDataset, Sampler, BatchSampler, SubsetRandomSampler
+
 from torch.utils.tensorboard import SummaryWriter
 
 from datetime import datetime
@@ -12,7 +14,7 @@ from contextlib import contextmanager
 import gc
 import inspect
 import sys
-from typing import Dict
+from typing import Dict, Sequence, List, Iterator
 
 default_output_dir = Path(__file__).resolve().parent / "experiments"
 
@@ -203,3 +205,67 @@ def show_gpu_memory():
         except Exception as e:
             pass
     print("Total size:", pretty_size(total_size))
+
+class ClusteredDataset(Dataset):
+    datasets_per_cluster: List
+    range_per_cluster: List
+
+    def __init__(self, datasets: List[Dataset]):
+        super().__init__()
+        concat_dataset_per_cluster = {}       
+        for dataset in datasets:
+            assert hasattr(dataset, 'cluster_index')
+            if dataset.cluster_index not in concat_dataset_per_cluster:
+                concat_dataset_per_cluster[dataset.cluster_index] = []
+            concat_dataset_per_cluster[dataset.cluster_index].append(dataset)
+               
+        self.datasets_per_cluster = []
+        self.range_per_cluster = []
+        last_index = 0
+        for datasets in concat_dataset_per_cluster.values():
+            concat_dataset = ConcatDataset(datasets)
+            n = len(concat_dataset)
+            self.datasets_per_cluster.append(concat_dataset)
+            self.range_per_cluster.append((last_index, last_index + n))
+            last_index += n
+
+    def __len__(self):
+        return self.range_per_cluster[-1][1]
+
+    def __getitem__(self, idx):
+        # Option: use bisect like ConcatDataset if the number of dataset ever becomes very large.
+        for cluster_index, r in enumerate(self.range_per_cluster):
+            if idx >= r[0] and idx < r[1]:
+                return self.datasets_per_cluster[cluster_index][idx - r[0]]
+        return None
+
+class SubsetSampler(Sampler):
+    def __init__ (self, indices: Sequence[int]):
+        self.indices = indices
+    
+    def __iter__(self) -> Iterator[int]:
+        return iter(self.indices)
+
+    def __len__(self) -> int:
+        return len(self.indices)
+    
+class ClusteredBatchRandomSampler(Sampler):
+    def __init__ (self, clustered_dataset: ClusteredDataset, batch_size: int, shuffle: bool, drop_last: bool = False, generator=None):
+        self.generator = generator
+        self.clustered_batch_samplers = []
+        for cluster_range, dataset in zip(clustered_dataset.range_per_cluster, clustered_dataset.datasets_per_cluster):
+            if shuffle:
+                sampler = SubsetRandomSampler(range(cluster_range[0], cluster_range[1]))
+            else:
+                sampler = SubsetSampler(range(cluster_range[0], cluster_range[1]))
+            self.clustered_batch_samplers.append (BatchSampler(sampler, batch_size, drop_last))
+
+        self.batch_sampler_indices = []
+        for idx, batch_sampler in enumerate(self.clustered_batch_samplers):
+            self.batch_sampler_indices += [idx] * len(batch_sampler)        
+    
+    def __iter__(self):
+        per_cluster_iterators = [b.__iter__() for b in self.clustered_batch_samplers]
+        for idx in torch.randperm(len(self.batch_sampler_indices), generator=self.generator):
+            sample_idx = self.batch_sampler_indices[idx]
+            yield next(per_cluster_iterators[sample_idx])

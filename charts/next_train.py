@@ -88,8 +88,8 @@ if __name__ == "__main__":
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"],
-        loss = ["mse_and_fg_var"],
-        # loss = ["mse"],
+        # loss = ["mse_and_fg_var"],
+        loss = ["mse"],
 
         epochs = [(50, 200)],
         # epochs = [(20, 100)],
@@ -128,10 +128,10 @@ if __name__ == "__main__":
                 "--epochs_finetune", str(p.epochs[1]),
 
                 # TEMP!
-                # "--debug",
-                # "--clean_previous",
-                # "--validate",
+                "--debug",
+                "--clean_previous",
+                "--validate",
                 # "--overfit", "1",
-                # "--no-evaluation",
+                "--no-evaluation",
                 # "--batch_size", "4",
             ], check=True)

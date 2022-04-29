@@ -35,7 +35,7 @@ from dataclasses import dataclass
 from pathlib import Path
 import sys
 import typing
-from typing import List, NamedTuple, Dict
+from typing import List, NamedTuple, Dict, Tuple
 
 class ImagePreprocessor:   
     class ToTensor:
@@ -87,6 +87,8 @@ class ColorRegressionImageDataset(Dataset):
                 random_fg_label=self.random_fg_label,
                 source=self.source)
 
+    # Make it compatible with ClusteredDataset
+    cluster_index: Tuple[int,int]
     debug: bool = False
 
     def __init__(self, img_dir, preprocessor: ImagePreprocessor, max_length=sys.maxsize):
@@ -99,6 +101,11 @@ class ColorRegressionImageDataset(Dataset):
         if not json_files:
             raise Exception("No files in dataset {img_dir}")
         self.labeled_images = [LabeledImage(f) for f in json_files]
+        self.labeled_images[0].ensure_images_loaded()
+        self.rows = self.labeled_images[0].labels_image.shape[0]
+        self.cols = self.labeled_images[0].labels_image.shape[1]
+        self.cluster_index = (self.cols, self.rows)
+        self.labeled_images[0].release_images()
 
     def __len__(self):
         return min(self.max_length, len(self.labeled_images))
