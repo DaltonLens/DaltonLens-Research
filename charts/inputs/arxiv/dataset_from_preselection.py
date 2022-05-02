@@ -100,15 +100,17 @@ def replace_substrings(s, spans):
     out_s += s[last_index:]
     return out_s
 
-def set_svg_min_stroke_width(svg_in, svg_out):
-    ic (svg_in)
-    ic (svg_out)
+def set_svg_min_stroke_width(svg_in, svg_out, min_stroke_width=2.0):
+    # Set the stroke width to at least min_stroke_width.
+    # This ensures that all renderers will make the lines thicker,
+    # because some renderers will make very thin lines without
+    # antialiasing if the width is less than 1.
     with open(svg_in, 'r') as f, open(svg_out, 'w') as f_out:
         for l in f:
             spans = []
             for m in re.finditer(r'stroke-width="([0-9.]*)"', l):
                 v = float(m.group(1))
-                v = max(v, 2.0)
+                v = max(v, min_stroke_width)
                 spans.append((m.span(1), v))
             if len(spans) == 0:
                 f_out.write (l)
@@ -147,6 +149,8 @@ def render_pdf(pdf_file: Path, out_dir):
 
     for im in [out_r72_antialiased, out_r72_aliased, out_r56_antialiased, out_r56_aliased]:
         resize (im, best_size)
+
+    return best_size
 
 class Result(Enum):
     ACCEPT = 1
@@ -197,9 +201,7 @@ def main (args):
     pdf_files = sorted(preselected_dir.glob('**/*.pdf'))
 
     out_dataset_dir = args.input_dir / 'dataset' if args.dataset_dir is None else args.dataset_dir
-    out_validated_dir = out_dataset_dir / 'validated'
     out_discarded_dir = out_dataset_dir / 'discarded'
-    out_validated_dir.mkdir(exist_ok=True, parents=True)
     out_discarded_dir.mkdir(exist_ok=True, parents=True)
 
     print ('out_discarded_dir', out_discarded_dir)
@@ -213,7 +215,7 @@ def main (args):
         # Assume validated at first.
         printBold ("Processing ", pdf_file.name)
         out_pdf = Path(tempdir) / pdf_file.name
-        render_pdf (pdf_file, Path(tempdir))
+        image_size = render_pdf (pdf_file, Path(tempdir))
 
         run([script_path.parent / 'generate_plots' / 'gt_from_pairs' / 'build' / 'gt_from_pairs',
             out_pdf.with_suffix('.r72.antialiased.png'), 
@@ -239,7 +241,12 @@ def main (args):
         generated_files = list(out_pdf.parent.glob(out_pdf.with_suffix('').name + '.*'))
         files_to_copy = set(source_files) | set(generated_files)
         for f in files_to_copy:
-            target_dir = out_validated_dir if validated else out_discarded_dir
+            if validated:
+                width, height = image_size
+                target_dir = out_dataset_dir / f'{width}x{height}'
+                target_dir.mkdir(exist_ok=True, parents=True)
+            else:
+                target_dir =out_discarded_dir
             try:
                 shutil.move (str(f), str(target_dir))
             except Exception as e:

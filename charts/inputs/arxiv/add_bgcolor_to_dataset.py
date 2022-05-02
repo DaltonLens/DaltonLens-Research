@@ -76,60 +76,62 @@ def main ():
     tempdir.mkdir(exist_ok=True, parents=True)
 
     # zvlog.start ()
-    default_bg_dir = args.input_dir / 'dataset' / 'validated'
     output_dir = args.input_dir / 'dataset_bg'
 
-    json_files = sorted(default_bg_dir.glob('**/*.r72.json'))
-    for json_file in json_files:
-        with open(json_file, 'r') as f:
-            jsonDict = json.load(f)
+    for size in ['320x240', '640x480', '1280x1024']:
+        d = args.input_dir / 'dataset' / size
+        json_files = sorted(d.glob('**/*.r72.json'))
+    
+        for json_file in json_files:
+            with open(json_file, 'r') as f:
+                jsonDict = json.load(f)
 
-        if not bg_color_is_white(jsonDict):
-            print ("Background is not white, skipping.")
-            continue            
-        
-        print (f"Processing {json_file}")
+            if not bg_color_is_white(jsonDict):
+                print ("Background is not white, skipping.")
+                continue            
+            
+            print (f"Processing {json_file}")
 
-        svg_file_aa = json_file.parent / (json_file.stem.replace('.r72','') + '.aa.svg')
-        if not svg_file_aa.exists():
-            print (f"Error: could not find {svg_file_aa}")
-            continue
-        
-        # Always flush the temp dir before processing a new guy to avoid
-        # previous datasets to creep in.
-        for f in tempdir.iterdir():
-            f.unlink()
+            svg_file_aa = json_file.parent / (json_file.stem.replace('.r72','') + '.aa.svg')
+            if not svg_file_aa.exists():
+                print (f"Error: could not find {svg_file_aa}")
+                continue
+            
+            # Always flush the temp dir before processing a new guy to avoid
+            # previous datasets to creep in.
+            for f in tempdir.iterdir():
+                f.unlink()
 
-        out_svg = tempdir / svg_file_aa.name.replace('.aa.','.bg.')
-        out_pdf = out_svg.with_suffix('.pdf')
-        print('out_pdf', out_pdf)
+            out_svg = tempdir / svg_file_aa.name.replace('.aa.','.bg.')
+            out_pdf = out_svg.with_suffix('.pdf')
+            print('out_pdf', out_pdf)
 
-        if (output_dir / 'validated' / out_pdf.name).exists():
-            continue
+            if (output_dir / size / out_pdf.name).exists():
+                continue
 
-        if (output_dir / 'discarded' / out_pdf.name).exists():
-            continue
+            if (output_dir / 'discarded' / out_pdf.name).exists():
+                continue
 
-        new_bg_color = find_different_color(jsonDict)
-        if new_bg_color is None:
-            print ("Could not find a compatible color, skipping.")
-            continue
-        print (new_bg_color)
+            new_bg_color = find_different_color(jsonDict)
+            if new_bg_color is None:
+                print ("Could not find a compatible color, skipping.")
+                continue
+            print (new_bg_color)
 
-        with open(svg_file_aa, 'r') as f_in, open(out_svg, 'w') as f_out:
-            for l in f_in:
-                f_out.write(l.replace ('fill="#ffffff"', f'fill="{new_bg_color}"'))
-                if l.startswith('<g enable-background'):
-                    f_out.write(f'<rect width="100%" height="100%" fill="{new_bg_color}"/>\n')
+            with open(svg_file_aa, 'r') as f_in, open(out_svg, 'w') as f_out:
+                for l in f_in:
+                    f_out.write(l.replace ('fill="#ffffff"', f'fill="{new_bg_color}"'))
+                    if l.startswith('<g enable-background'):
+                        f_out.write(f'<rect width="100%" height="100%" fill="{new_bg_color}"/>\n')
 
-        run(["cairosvg", out_svg, "-o", out_pdf])
-        out_svg.unlink ()
+            run(["cairosvg", out_svg, "-o", out_pdf])
+            out_svg.unlink ()
 
-        val_args = SimpleNamespace()
-        val_args.input_dir = args.input_dir
-        val_args.dataset_dir = output_dir
-        val_args.preselection_dir = tempdir
-        dataset_from_preselection.main (val_args)
+            val_args = SimpleNamespace()
+            val_args.input_dir = args.input_dir
+            val_args.dataset_dir = output_dir
+            val_args.preselection_dir = tempdir
+            dataset_from_preselection.main (val_args)
 
 if __name__ == "__main__":
     main ()

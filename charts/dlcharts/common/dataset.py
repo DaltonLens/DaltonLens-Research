@@ -86,7 +86,10 @@ class LabeledImage:
         self.labels_as_rgb = labels_lut[self.labels_image]
         
         # Grab the background from the original image.
-        background_mask = np.all(self.labels_as_rgb == labels_lut[0])
+        background_mask = np.all(self.labels_as_rgb == labels_lut[0], axis=-1)
+        if debug:
+            zvlog.image ("background_mask", background_mask.astype(np.uint8)*255)
+            zvlog.image ("rendered_image", self.rendered_image)
         background_mask = np.expand_dims(background_mask, axis=-1)
         self.labels_as_rgb = np.where(background_mask, self.rendered_image, self.labels_as_rgb)
 

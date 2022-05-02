@@ -1,6 +1,8 @@
 charts/inputs/*generated/
 charts/inputs/tests/**/*.png
 charts/inputs/train*/**/*.png
+charts/inputs/train/*/
+charts/inputs/train-no-min-lw/
 charts/inputs/arxiv/data/
 *-generated/
 *-generated-*/

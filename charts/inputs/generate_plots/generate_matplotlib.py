@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+from dlcharts.common.dataset import LabeledImage
 import zv
 from dlcharts.common.utils import swap_rb
 
@@ -28,9 +29,11 @@ def parse_command_line():
     parser.add_argument('output_dir', help='Output folder for the generated images', type=Path)
     parser.add_argument('--debug', help='Toggle visual debugging', default=False, action='store_const', const=True)
     parser.add_argument('--num-images', help='Number of images to generate', default=2, type=int)
-    parser.add_argument('--margin', help='Mask extra margin', default=3, type=int)
+    parser.add_argument('--margin', help='Mask extra margin', default=0, type=int)
     parser.add_argument('--no-antialiasing', help='Disable anti-aliasing', action='store_true')
     parser.add_argument('--scatter', help='Generate scatter plots', action='store_true')
+    parser.add_argument('--width', help='Image width', default=320, type=int)
+    parser.add_argument('--height', help='Image height', default=240, type=int)
     args = parser.parse_args()
     return args
 
@@ -93,7 +96,9 @@ def to_mpl_color(rgb):
         return (0,0,0,0)
 
 class Config:
-    def __init__(self):
+    def __init__(self, args):
+        self.width = args.width
+        self.height = args.height
         self.backend = 'agg'
         self.scatter = False
         nfuncs = rgen.integers(2,6)
@@ -145,18 +150,19 @@ def generate_plot (cfg: Config, on_rendered_image_event):
     for i, color in enumerate(plot_colors):
         colors_by_label[color_index_to_label(i)] = color
 
-    w, h, dpi = 256, 256, cfg.dpi
+    w, h, dpi = cfg.width, cfg.height, cfg.dpi
 
-    def draw(fig, ax, colors):
+    def draw(fig, ax, colors, aliased):
+        lw = cfg.linewidth if not aliased else max(cfg.linewidth, 1.2)
         x = np.linspace(*cfg.linspace_args)
         for i, func in enumerate(cfg.funcs):
             if cfg.scatter:
                 ax.scatter(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset,
                            marker=cfg.markers[i],
                            color=to_mpl_color(colors[i+1]),
-                           s=cfg.linewidth)
+                           s=lw)
             else:
-                ax.plot(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset, color=to_mpl_color(colors[i+1]), linewidth=cfg.linewidth)
+                ax.plot(x*cfg.xscale + cfg.xoffset, func(x)*cfg.yscale + cfg.yoffset, color=to_mpl_color(colors[i+1]), linewidth=lw)
         im = image_from_fig(fig)
         assert im.shape[0] == h and im.shape[1] == w
         return im
@@ -173,7 +179,7 @@ def generate_plot (cfg: Config, on_rendered_image_event):
     set_bg_color(cfg.bg_color)
     set_axes_color (axes_color)
     fig,ax = create_fig()
-    rendered_im = draw (fig, ax, plot_colors)
+    rendered_im = draw (fig, ax, plot_colors, aliased=False)
     if viewer:
         image_id = viewer.addImage ('Rendered', rendered_im)
         viewer.setEventCallback (image_id, on_rendered_image_event, None)
@@ -181,7 +187,7 @@ def generate_plot (cfg: Config, on_rendered_image_event):
 
     set_bg_color((255,255,255))
     fig,ax = create_fig()
-    im = draw (fig, ax, [None]*len(plot_colors))
+    im = draw (fig, ax, [None]*len(plot_colors), aliased=True)
     mask2d = np.any(im < 255-args.margin, axis=2)
     labels_image[mask2d] = color_index_to_label(0)
     plt.close(fig)
@@ -196,7 +202,7 @@ def generate_plot (cfg: Config, on_rendered_image_event):
         fig,ax = create_fig()        
         colors = [None] * len(plot_colors)
         colors[color_idx] = plot_colors[color_idx]
-        im = draw (fig, ax, colors)
+        im = draw (fig, ax, colors, aliased=True)
         mask2d = np.any(im < 255-args.margin, axis=2)
         labels_image[mask2d] = color_index_to_label(color_idx)
         plt.close(fig)
@@ -249,7 +255,7 @@ if __name__ == "__main__":
             process_next_image = True
 
     for i in tqdm(range(args.num_images)):
-        config = Config()
+        config = Config(args)
         config.scatter = args.scatter
 
         if viewer:
@@ -261,8 +267,13 @@ if __name__ == "__main__":
         # cv2 expects bgr
         cv2.imwrite(prefix + '.antialiased.png', swap_rb(rendered))
         cv2.imwrite(prefix + '.labels.png', labels)
-        with open(prefix + '.json', 'w') as f:
+        json_file = prefix + '.json'
+        with open(json_file, 'w') as f:
             f.write (json.dumps(jsonEntries))
+
+        labeled_im = LabeledImage(Path(json_file))
+        labeled_im.compute_labels_as_rgb ()
+        cv2.imwrite(prefix + '.aliased.png', swap_rb(labeled_im.labels_as_rgb))
 
         if viewer:
             while not process_next_image and zvApp.numViewers > 0:

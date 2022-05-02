@@ -73,15 +73,15 @@ int main (int argc, char** argv)
     logImage ("mask_changed", mask_changed);
     cv::Mat1b mask_background = 255 - mask_changed;
     
-    cv::Mat1f dist_from_change_1f;
-    cv::distanceTransform(mask_background, dist_from_change_1f, cv::DIST_L2, 3);
-    cv::Mat1b dist_from_change (rows, cols);
-    for_all_rc (dist_from_change)
-    {
-        dist_from_change(r,c) = int(std::min(dist_from_change_1f(r,c), 255.0f) + 0.5f);
-    }
+    // cv::Mat1f dist_from_change_1f;
+    // cv::distanceTransform(mask_background, dist_from_change_1f, cv::DIST_L2, 3);
+    // cv::Mat1b dist_from_change (rows, cols);
+    // for_all_rc (dist_from_change)
+    // {
+    //     dist_from_change(r,c) = int(std::min(dist_from_change_1f(r,c), 255.0f) + 0.5f);
+    // }
     
-    logImage ("dist_from_change", dist_from_change);
+    // logImage ("dist_from_change", dist_from_change);
 
     std::vector<int> ordered_labels;
     ordered_labels.reserve(255);
@@ -200,15 +200,17 @@ int main (int argc, char** argv)
 
     logImage ("labels_after_fill", label_image);
 
-    // Make sure that pixels that are far from a change are all
-    // marked as background.
-    for_all_rc (label_image)
-    {
-        if (dist_from_change(r,c) > 2)
-            label_image (r,c) = 0;
-    }
-
-    logImage ("labels_after_dist", label_image);
+    // Disabled this as it leads to more confusions. Large uniform areas
+    // will still needs to be reconstructed properly. Hopefully they'll be
+    // rare enough to avoid dominating the error terms.
+    // // Make sure that pixels that are far from a change are all
+    // // marked as background.
+    // for_all_rc (label_image)
+    // {
+    //     if (dist_from_change(r,c) > 2)
+    //         label_image (r,c) = 0;
+    // }
+    // logImage ("labels_after_dist", label_image);
 
     std::string jsonFile;
     jsonFile += "{";
