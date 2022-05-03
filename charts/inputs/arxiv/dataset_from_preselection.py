@@ -105,6 +105,10 @@ def set_svg_min_stroke_width(svg_in, svg_out, min_stroke_width=2.0):
     # This ensures that all renderers will make the lines thicker,
     # because some renderers will make very thin lines without
     # antialiasing if the width is less than 1.
+    # NOTE: this can fail if the stroke width is getting scaled with
+    # For example <path transform="matrix(.1,0,0,-.1,0,364)" stroke-width="9.0"
+    # will be rendered with a width of 9.0*0.1 = 0.9. To fix that we'd need to parse
+    # the matrix field, and adjust the stroke width accordingly.
     with open(svg_in, 'r') as f, open(svg_out, 'w') as f_out:
         for l in f:
             spans = []

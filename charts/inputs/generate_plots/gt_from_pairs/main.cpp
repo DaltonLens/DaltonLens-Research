@@ -100,14 +100,59 @@ int main (int argc, char** argv)
     auto next_label_it = ordered_labels.begin();
     std::unordered_map<cv::Vec3b, PerColorInfo, cv::vec3b_hash> label_map;
     
-    
+    cv::Mat1b label_image (rows, cols);
+    label_image = 255; // unknown.
+
+    cv::Vec3b uniform_background = cv::Vec3b(255,255,255);
+    bool found_uniform_background = false;
+    {
+        std::unordered_map<cv::Vec3b, int, cv::vec3b_hash> numPixelsPerBorderColor;
+        int numBorderPixels = 0;
+        for_all_rc (aliased)
+        {
+            // Only process the border.
+            if (r > rows*0.1 && r < rows*0.9 && c > cols*0.1 && c < cols*0.9)
+                continue;
+            numPixelsPerBorderColor[aliased(r,c)] += 1;
+            ++numBorderPixels;
+        }
+
+
+        auto max_color_it = std::max_element(numPixelsPerBorderColor.begin(), numPixelsPerBorderColor.end(),
+                                             [](const std::pair<cv::Vec3b, int> &a,
+                                                const std::pair<cv::Vec3b, int> &b)
+                                             {
+                                                 return a.second < b.second;
+                                             });
+
+        if (max_color_it->second > numBorderPixels * 0.5)
+        {
+            uniform_background = max_color_it->first;
+            found_uniform_background = true;
+            fprintf (stdout, "Found a uniform background in the border area. (%d %d %d)\n",
+                    uniform_background[0], uniform_background[1], uniform_background[2]);
+            label_map[uniform_background].label = 0;
+            for_all_rc (label_image)
+            {
+                if (aliased(r,c) == uniform_background)
+                {
+                    label_image(r,c) = 0;
+                    label_map[uniform_background].count += 1;
+                }
+            }
+        }
+    }
+
     std::vector<std::pair<int, cv::Vec3b>> finalLabels;
     // Add the background.
-    finalLabels.push_back (std::make_pair(0, cv::Vec3b(255,255,255)));
+    finalLabels.push_back (std::make_pair(0, uniform_background));
     
-    cv::Mat1b label_image (rows, cols);
     for_all_rc (mask_changed)
     {
+        // Already assigned to background.
+        if (label_image(r,c) != 255)
+            continue;
+
         int label = 255; // means unassigned. 0 means background.
 
         if (mask_changed(r,c))
@@ -159,15 +204,17 @@ int main (int argc, char** argv)
 
     // All remaining unknown pixels are background
     int num_background = 0;
-    cv::Vec3b background_color;
     for_all_rc (label_image)
     {
         if (label_image(r,c) == 255)
         {
             label_image(r,c) = 0;
-            background_color = aliased(r,c);
-            ++num_background;
+            if (!found_uniform_background)
+                uniform_background = aliased(r,c);
         }
+
+        if (label_image(r,c) == 0)
+            ++num_background;
     }
 
     if (num_background == 0)
@@ -195,10 +242,11 @@ int main (int argc, char** argv)
     }
     else
     {
-        finalLabels[0].second = background_color;
+        finalLabels[0].second = uniform_background;
     }
 
     logImage ("labels_after_fill", label_image);
+
 
     // Disabled this as it leads to more confusions. Large uniform areas
     // will still needs to be reconstructed properly. Hopefully they'll be
@@ -211,6 +259,8 @@ int main (int argc, char** argv)
     //         label_image (r,c) = 0;
     // }
     // logImage ("labels_after_dist", label_image);
+    
+    fprintf (stdout, "Number of labels: %d\n", (int)finalLabels.size());
 
     std::string jsonFile;
     jsonFile += "{";
