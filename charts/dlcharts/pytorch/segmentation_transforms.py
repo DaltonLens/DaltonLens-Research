@@ -19,12 +19,17 @@ def pad_if_smaller(img, size, fill=0):
     return img
 
 class RandomCropWithRegressionLabels:
-    def __init__(self, size):
-        self.size = size
+    def __init__(self, cropping_border, divider=64):
+        self.cropping_border = cropping_border
+        self.divider = divider # force the final size to be a multiple of divider
 
     def __call__(self, images):
-        images = [pad_if_smaller(image, self.size) for image in images]
-        crop_params = T.RandomCrop.get_params(images[0], (self.size, self.size))
+        # images = [pad_if_smaller(image, self.size) for image in images]
+        images = list(images)
+        hw_size = images[0].size()[-2:] # height, width
+        hw_size = (hw_size[0] - self.cropping_border, hw_size[1] - self.cropping_border)
+        hw_size = (hw_size[0]//self.divider * self.divider, hw_size[1]//self.divider * self.divider)
+        crop_params = T.RandomCrop.get_params(images[0], hw_size)
         outputs = [F.crop(image, *crop_params) for image in images]
         return outputs
 
@@ -91,6 +96,15 @@ class RandomHorizontalFlip:
         if random.random() >= self.flip_prob:
             return images
         return [F.hflip(image) for image in images]
+    
+class RandomVerticalFlip:
+    def __init__(self, flip_prob):
+        self.flip_prob = flip_prob
+
+    def __call__(self, images: List):
+        if random.random() >= self.flip_prob:
+            return images
+        return [F.vflip(image) for image in images]
 
 class RandomCrop:
     def __init__(self, size):

@@ -78,7 +78,7 @@ def main ():
     # zvlog.start ()
     output_dir = args.input_dir / 'dataset_bg'
 
-    for size in ['320x240', '640x480', '1280x1024']:
+    for size in ['320x240', '640x480', '1280x960']:
         d = args.input_dir / 'dataset' / size
         json_files = sorted(d.glob('**/*.r72.json'))
     

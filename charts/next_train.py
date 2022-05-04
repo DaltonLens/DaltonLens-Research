@@ -86,7 +86,7 @@ if __name__ == "__main__":
         # model=["uresnet18-sa-shuffle"],
         encoder_lr=["1e-5"],
         decoder_lr=["5e-3"],
-        batch_size = ["32"],
+        batch_size = ["12"],
         # loss = ["l1"],
         # loss = ["mse_and_fg_var"],
         loss = ["mse"],
@@ -128,10 +128,10 @@ if __name__ == "__main__":
                 "--epochs_finetune", str(p.epochs[1]),
 
                 # TEMP!
-                "--debug",
-                "--clean_previous",
-                "--validate",
-                # "--overfit", "1",
-                "--no-evaluation",
+                # "--debug",
+                # "--clean_previous",
+                # "--validate",
+                # "--overfit", "4",
+                # "--no-evaluation",
                 # "--batch_size", "4",
             ], check=True)

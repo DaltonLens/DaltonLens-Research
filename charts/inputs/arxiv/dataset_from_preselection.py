@@ -144,7 +144,7 @@ def render_pdf(pdf_file: Path, out_dir):
     im = cv2.imread(str(out_r72_antialiased))
     rows = im.shape[0]
     cols = im.shape[1]
-    valid_sizes = [(1280,1024), (640,480), (320,240)]
+    valid_sizes = [(1280,960), (640,480), (320,240)]
     best_size = valid_sizes[0]
     for size in valid_sizes:
         dc = abs(cols-size[0])

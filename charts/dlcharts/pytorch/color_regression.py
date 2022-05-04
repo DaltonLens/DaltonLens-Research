@@ -46,7 +46,7 @@ class ImagePreprocessor:
             assert len(images) == 3
             return [self.to_tensor(images[0]), self.to_tensor(images[1]), torch.from_numpy(images[2])]
 
-    def __init__(self, device: torch.device, target_size: int = None):
+    def __init__(self, device: torch.device, cropping_border: int = 32):
 
         self.device = device
         transform_list = [
@@ -54,11 +54,12 @@ class ImagePreprocessor:
             # Both(transforms.Lambda(lambda x: x.to(device))),
             ApplyOnFloatOnly(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         ]
-        if target_size is not None:
+        if cropping_border is not None:
             transform_list += [
-                segmentation_transforms.RandomCropWithRegressionLabels(target_size),
+                segmentation_transforms.RandomCropWithRegressionLabels(cropping_border),
                 segmentation_transforms.RandomHorizontalFlip(0.5),
-                segmentation_transforms.RandomRotate90(0.2),
+                segmentation_transforms.RandomVerticalFlip(0.5),
+                # segmentation_transforms.RandomRotate90(0.2),
             ]
         
         self.transform = segmentation_transforms.Compose(transform_list)
@@ -97,7 +98,7 @@ class ColorRegressionImageDataset(Dataset):
         self.transform = preprocessor.transform
         self.max_length = max_length
 
-        json_files = sorted(img_dir.glob("img-?????*.json"))
+        json_files = sorted(img_dir.glob("*.json"))
         if not json_files:
             raise Exception("No files in dataset {img_dir}")
         self.labeled_images = [LabeledImage(f) for f in json_files]

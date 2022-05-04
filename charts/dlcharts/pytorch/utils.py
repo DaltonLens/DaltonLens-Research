@@ -264,6 +264,9 @@ class ClusteredBatchRandomSampler(Sampler):
         for idx, batch_sampler in enumerate(self.clustered_batch_samplers):
             self.batch_sampler_indices += [idx] * len(batch_sampler)        
     
+    def __len__(self) -> int:
+        return len(self.batch_sampler_indices)
+
     def __iter__(self):
         per_cluster_iterators = [b.__iter__() for b in self.clustered_batch_samplers]
         for idx in torch.randperm(len(self.batch_sampler_indices), generator=self.generator):

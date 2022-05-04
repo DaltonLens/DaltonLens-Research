@@ -45,7 +45,7 @@ import logging
 Sample = cr.ColorRegressionImageDataset.Sample
 ModelOutput = dlcharts.pytorch.models_regression.RegressionModelOutput
 
-DEFAULT_BATCH_SIZE=64 if is_google_colab() else 4
+DEFAULT_BATCH_SIZE=32 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
 @dataclass
 class Hparams:
@@ -87,7 +87,7 @@ class DrawingsData:
         super().__init__()
         self.params = params
         self.hparams = hparams
-        self.preprocessor = cr.ImagePreprocessor(None, target_size=192)
+        self.preprocessor = cr.ImagePreprocessor(None, cropping_border=32)
         
         self.generator = torch.Generator().manual_seed(42)
         self.np_gen = np.random.default_rng(42)
@@ -100,14 +100,14 @@ class DrawingsData:
         self.create ()
 
     def split_dataset (self, dataset, train_ratio):
-        if self.hparams.overfit != 0:
-            n_train = self.hparams.overfit
-            n_val = min(len(dataset) - n_train, self.hparams.overfit)
+        if self.params.overfit != 0:
+            n_train = self.params.overfit
+            n_val = min(len(dataset) - n_train, self.params.overfit)
         else:
             n_train = max(int(len(dataset) * train_ratio), 1)
-            n_val = len(self.dataset) - n_train
+            n_val = len(dataset) - n_train
 
-        all_indices = np.array(range(0, len(self.dataset)))
+        all_indices = np.array(range(0, len(dataset)))
         self.np_gen.shuffle(all_indices)
 
         train_indices = all_indices[0:n_train]
@@ -125,7 +125,7 @@ class DrawingsData:
         self.val_dataset = ClusteredDataset([ds[1] for ds in train_val_datasets])
 
         train_sampler = ClusteredBatchRandomSampler(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=True)
-        val_sampler = ClusteredBatchRandomSampler(self.train_dataset, batch_size=self.hparams.batch_size, shuffle=False)
+        val_sampler = ClusteredBatchRandomSampler(self.val_dataset, batch_size=self.hparams.batch_size, shuffle=False)
         self.train_dataloader = DataLoader(self.train_dataset, batch_sampler=train_sampler, num_workers=WORKERS)
         self.val_dataloader = DataLoader(self.val_dataset, batch_sampler=val_sampler, num_workers=WORKERS)
 
@@ -135,8 +135,10 @@ class DrawingsData:
         # They are shuffled, so we're fine.
         n_train = len(self.train_dataset)
         n_val = len(self.val_dataset)
-        self.monitored_train_samples = [self.train_dataset[idx] for idx in range(0,min(3, n_train))]
-        self.monitored_val_samples = [self.val_dataset[idx] for idx in range(0,min(10, n_val))]
+        monitored_train_indices = self.np_gen.choice(range(0, len(self.train_dataset)), size=min(3, n_train), replace=False)
+        monitored_val_indices = self.np_gen.choice(range(0, len(self.val_dataset)), size=min(10, n_val), replace=False)
+        self.monitored_train_samples = [self.train_dataset[idx] for idx in monitored_train_indices]
+        self.monitored_val_samples = [self.val_dataset[idx] for idx in monitored_val_indices]
 
 def regression_accuracy(outputs: ModelOutput, batch: Sample):
     output_rgb = outputs.rgb
@@ -235,7 +237,7 @@ class RegressionTrainer:
         frozen_scheduler = self._create_scheduler(data, frozen=True)
         finetune_scheduler = self._create_scheduler(data, frozen=False)
 
-        sample_input = data.dataset[0].labels_rgb.unsqueeze(0).to(self.device)
+        sample_input = data.train_dataset[0].labels_rgb.unsqueeze(0).to(self.device)
         schedulers = dict(frozen_scheduler=frozen_scheduler,finetune_scheduler=finetune_scheduler)
         self.xp.prepare ("default", self.model, self.optimizer, schedulers, self.device, sample_input)
 
@@ -453,11 +455,34 @@ if __name__ == "__main__":
     # Alternative assuming a good cwd folder.
     # root_dir = Path().absolute()
     datasets_path = [
-        root_dir / 'inputs' / 'train' / 'opencv-generated',
-        root_dir / 'inputs' / 'train' / 'opencv-generated-background',
-        root_dir / 'inputs' / 'train' / 'mpl-generated',
-        root_dir / 'inputs' / 'train' / 'mpl-generated-no-antialiasing',
-        root_dir / 'inputs' / 'train' / 'mpl-generated-scatter',
+        root_dir / 'inputs' / 'train' / 'arxiv/320x240',
+        root_dir / 'inputs' / 'train' / 'arxiv/320x240_bg',
+        root_dir / 'inputs' / 'train' / 'arxiv/640x480_bg',
+        root_dir / 'inputs' / 'train' / 'arxiv/640x480',
+        root_dir / 'inputs' / 'train' / 'arxiv/640x480_bg_upsampled',
+        root_dir / 'inputs' / 'train' / 'arxiv/640x480_upsampled',
+        root_dir / 'inputs' / 'train' / 'opencv-drawings/320x240',
+        root_dir / 'inputs' / 'train' / 'opencv-drawings/640x480',
+        root_dir / 'inputs' / 'train' / 'opencv-drawings/640x480_upsampled',
+        root_dir / 'inputs' / 'train' / 'mpl-no-aa/320x240',
+        root_dir / 'inputs' / 'train' / 'mpl-no-aa/640x480',
+        root_dir / 'inputs' / 'train' / 'mpl/320x240',
+        root_dir / 'inputs' / 'train' / 'mpl/640x480',
+        root_dir / 'inputs' / 'train' / 'mpl/640x480_upsampled',
+        root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/320x240',
+        root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/640x480',
+        root_dir / 'inputs' / 'train' / 'mpl-scatter/320x240',
+        root_dir / 'inputs' / 'train' / 'mpl-scatter/640x480',
+        root_dir / 'inputs' / 'train' / 'mpl-scatter/640x480_upsampled',
+        # root_dir / 'inputs' / 'train' / 'mpl-scatter/1280x960',
+        # root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/1280x960',
+        # root_dir / 'inputs' / 'train' / 'mpl/1280x960',
+        # root_dir / 'inputs' / 'train' / 'mpl-no-aa/1280x960',
+        # root_dir / 'inputs' / 'train' / 'opencv-drawings/1280x960',
+        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_upsampled',
+        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_upsampled_bg',
+        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960',
+        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_bg',
     ]
 
     use_cuda = torch.cuda.is_available()

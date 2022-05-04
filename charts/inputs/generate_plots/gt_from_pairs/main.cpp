@@ -270,7 +270,7 @@ int main (int argc, char** argv)
     {
         const auto& labelAndColor = finalLabels[i];
         jsonFile += dl::formatted("{\"label\":%d,\"rgb_color\":[%d,%d,%d]}",
-                                  labelAndColor.first, labelAndColor.second[0], labelAndColor.second[1], labelAndColor.second[2]);
+                                  labelAndColor.first, labelAndColor.second[2], labelAndColor.second[1], labelAndColor.second[0]);
         if (i < finalLabels.size()-1)
             jsonFile += ',';
     }
