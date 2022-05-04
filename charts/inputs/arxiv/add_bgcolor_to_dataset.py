@@ -52,7 +52,7 @@ def find_different_color(jsonDict: Dict):
     for labelDict in jsonDict['labels']:
         existing_colors.append (labelDict['rgb_color'])
     chosen_color = None
-    for i in range(0, 256):
+    for i in range(0, 2048):
         cand_color = [random.randint(0, 255) for k in range(0,3)]
         unique = True
         for other_color in existing_colors:
@@ -107,9 +107,11 @@ def main ():
             print('out_pdf', out_pdf)
 
             if (output_dir / size / out_pdf.name).exists():
+                print ("Was already accepted, skipping.")
                 continue
 
             if (output_dir / 'discarded' / out_pdf.name).exists():
+                print ("Was already discarded, skipping.")
                 continue
 
             new_bg_color = find_different_color(jsonDict)
@@ -122,7 +124,7 @@ def main ():
                 for l in f_in:
                     f_out.write(l.replace ('fill="#ffffff"', f'fill="{new_bg_color}"'))
                     if l.startswith('<g enable-background'):
-                        f_out.write(f'<rect width="100%" height="100%" fill="{new_bg_color}"/>\n')
+                        f_out.write(f'<rect width="200%" height="200%" fill="{new_bg_color}"/>\n')
 
             run(["cairosvg", out_svg, "-o", out_pdf])
             out_svg.unlink ()
