@@ -28,7 +28,7 @@
             "type": "python",
             "request": "launch",
             "cwd": "${workspaceFolder}/charts",
-            "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_matplotlib.py",
+            "program": "${workspaceFolder}/charts/inputs/generate/generate_matplotlib.py",
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
@@ -45,7 +45,7 @@
             "type": "python",
             "request": "launch",
             "cwd": "${workspaceFolder}/charts",
-            "program": "${workspaceFolder}/charts/inputs/generate_plots/generate_opencv.py",
+            "program": "${workspaceFolder}/charts/inputs/generate/generate_opencv.py",
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [

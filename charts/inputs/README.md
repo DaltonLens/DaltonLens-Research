@@ -32,10 +32,4 @@ foregroup path.
 
 ## From arxiv
 
-See the [README.md](arxiv/README.md) there.
-
-## Useful scripts
-
-Convert from old ground truth format to the new one:
-
-`./convert_from_labels.sh ../train-old-filledmask/opencv-generated-background opencv-generated-background`
+See the [README.md](generate/arxiv/README.md) there.

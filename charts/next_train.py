@@ -13,7 +13,7 @@ from dlcharts.common.timer import Timer
 
 def quick_validate():
     subprocess.run([
-            "python3", "scripts/train_regression_gated.py",
+            "python3", "scripts/train_regression_masked.py",
             f"quick",
 
             # "--loss", "mse",
@@ -113,7 +113,7 @@ if __name__ == "__main__":
         p = SimpleNamespace(**p)
         with Timer("Train one config"):
             subprocess.run([
-                "python3", "scripts/train_regression_gated.py",
+                "python3", "scripts/train_regression_masked.py",
                 # v4 is the input data / data augmentation version.
                 # the 'g' stands for gated regression
                 f"v4_gated_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
