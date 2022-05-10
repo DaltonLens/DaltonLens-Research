@@ -49,7 +49,7 @@ def save_onnx(net, output_file):
 
 if __name__ == "__main__":
     checkpoint_file = sys.argv[1]
-    net = dlcharts.pytorch.models_regression.RegressionNet_UResNet18(residual_mode=True)
+    net = dlcharts.pytorch.models_regression_gated.GatedRegressionUnet()
     checkpoint = torch.load(checkpoint_file)
     net.load_state_dict(checkpoint['model_state_dict'])
     net.eval()

@@ -188,7 +188,7 @@ class Processor:
     def process_image(self, image_rgb: np.ndarray):
         # Faking the GT data.
         fake_target_rgb = np.zeros_like(image_rgb, dtype=np.uint8)
-        fake_fg_mask = np.zeros_like((image_rgb.shape[0], image_rgb.shape[1]), dtype=np.uint8)
+        fake_fg_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1]), dtype=np.uint8)
         input: Tensor = list(self.preprocessor.transform ([image_rgb, fake_target_rgb, fake_fg_mask]))[0]
         too_big = (image_rgb.shape[0] > 1280) or (image_rgb.shape[1] > 1280)
         not_64_multiple = (image_rgb.shape[0] % 64 != 0) or (image_rgb.shape[1] % 64 != 0)
@@ -199,8 +199,11 @@ class Processor:
             # ic(new_size_x, new_size_y)
             input = transforms.CenterCrop(min(new_size_x, new_size_y))(input)
         input.unsqueeze_ (0) # add the batch dim
-        output: RegressionModelOutput = self.net (input)
-        output_im = self.preprocessor.denormalize_and_clip_as_numpy (output.rgb[0])
+        output = self.net (input)
+        if isinstance(output, tuple): # RegressionModelOutput downcasted to tuple by torch.jit
+            output_im = self.preprocessor.denormalize_and_clip_as_numpy (output.rgb[0])
+        else:
+            output_im = self.preprocessor.denormalize_and_clip_as_numpy (output[0])
         output_im = (output_im * 255).astype(np.uint8)
 
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])

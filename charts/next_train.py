@@ -86,13 +86,12 @@ if __name__ == "__main__":
         # model=["uresnet18-sa-shuffle"],
         encoder_lr=["1e-5"],
         decoder_lr=["5e-3"],
-        batch_size = ["12"],
+        batch_size = ["32"],
         # loss = ["l1"],
-        # loss = ["mse_and_fg_var"],
-        loss = ["mse"],
+        loss = ["mse", "mse_and_fg_var"],
 
-        epochs = [(50, 200)],
-        # epochs = [(20, 100)],
+        # epochs = [(50, 200)],
+        epochs = [(20, 100)],
     )
    
     # [dict1, dict2, ...]

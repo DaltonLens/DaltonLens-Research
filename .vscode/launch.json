@@ -68,11 +68,12 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "--batch",
-                "--model",
-                "regression_unetres_v3_scripted.pt",
+                // "--batch",
+                // "--model", "regression_unetres_v4_scripted.pt",
+                "--model", "output.scripted.pt",
+                "--json", "inputs/train/arxiv/640x480/2203.00010_Fig1a.r72.json",
                 // "--baseline",
-                "--easy",
+                // "--easy",
                 // "--image", "inputs/opencv-generated/img-00001-000.antialiased.png",
             ],
         },
@@ -85,7 +86,7 @@
             "justMyCode": false,
             "console": "integratedTerminal",
             "args": [
-                "${workspaceFolder}/charts/logs-archive/v4_uresnet18-no-residual_mse_bn32_5e-3/default/checkpoint-00209.pt",
+                "${workspaceFolder}/charts/logs-2022-05-04-arxiv/v4_gated_unet-rn18-rn18_mse_bn12_5e-3_1e-5/default/checkpoint-00180.pt",
                 "output.scripted.pt"
             ],
         },

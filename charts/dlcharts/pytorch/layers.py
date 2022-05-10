@@ -50,7 +50,7 @@ class UnetBlock(nn.Module):
         )
 
     def forward(self, left, down):
-        if self.shuf_upsample:
+        if self.shuf_upsample is not None:
             down_upsampled = self.shuf_upsample (down)
         else:
             down_upsampled = F.interpolate(down, scale_factor=2.0)
