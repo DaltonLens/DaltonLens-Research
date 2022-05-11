@@ -79,6 +79,8 @@ if __name__ == "__main__":
     # )
 
     params_set = dict(
+        dataset = ["v4", "v5", "v5_no_arXiv"],
+
         # model=["uresnet18-sa", "uresnet18-no-residual", "uresnet18", "uresnet18-shuffle", "uresnet18-sa-shuffle"],
         model=["unet-rn18-rn18"],
         # model=["unet-rn18-rn18-sa"],
@@ -88,7 +90,8 @@ if __name__ == "__main__":
         decoder_lr=["5e-3"],
         batch_size = ["32"],
         # loss = ["l1"],
-        loss = ["mse", "mse_and_fg_var"],
+        # loss = ["mse", "mse_and_fg_var"],
+        loss = ["mse"],
 
         # epochs = [(50, 200)],
         epochs = [(20, 100)],
@@ -108,15 +111,20 @@ if __name__ == "__main__":
     # ))
 
     for idx, p in enumerate(params_dicts):
-        printBold (f"[{idx}/{len(params_dicts)}] training {p}")
         p = SimpleNamespace(**p)
+        # Small hack to allow a long batch job with v4 and v5.
+        if p.dataset != 'v4':
+            p.batch_size ="10"
+        printBold (f"[{idx}/{len(params_dicts)}] training {vars(p)}")
         with Timer("Train one config"):
             subprocess.run([
                 "python3", "scripts/train_regression_masked.py",
                 # v4 is the input data / data augmentation version.
                 # the 'g' stands for gated regression
-                f"v4_gated_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
+                f"{p.dataset}_gated_{p.model}_{p.loss}_bn{p.batch_size}_{p.decoder_lr}_{p.encoder_lr}",
                                
+                "--dataset", p.dataset,
+
                 "--model", p.model,
                 "--batch_size", p.batch_size,
                 "--decoder_lr", p.decoder_lr,

@@ -49,6 +49,7 @@ DEFAULT_BATCH_SIZE=32 if is_google_colab() else 4
 WORKERS=0 if debugger_is_active() else os.cpu_count()
 @dataclass
 class Hparams:
+    dataset: str
     batch_size: int = 4
     encoder_lr: float = 1e-5
     decoder_lr: float = 1e-3
@@ -87,7 +88,7 @@ class DrawingsData:
         super().__init__()
         self.params = params
         self.hparams = hparams
-        self.preprocessor = cr.ImagePreprocessor(None, cropping_border=32)
+        self.preprocessor = cr.ImagePreprocessor(None, do_augmentations=True, cropping_border=32)
         
         self.generator = torch.Generator().manual_seed(42)
         self.np_gen = np.random.default_rng(42)
@@ -336,7 +337,7 @@ class RegressionTrainer:
             im = (im*255.9999).astype(np.uint8)
             zvlog.image(name, im)
             # opencv expects bgr
-            cv2.imwrite(str(self.xp.log_path / (name + '.png')), swap_rb(im) if im.ndim == 3 else im)
+            cv2.imwrite(str(self.xp.log_path / 'images' / (name + '.png')), swap_rb(im) if im.ndim == 3 else im)
             
         def evaluate_images(title, sample_list):
             inputs = []
@@ -359,6 +360,7 @@ class RegressionTrainer:
                 # target_mask = (sample.labels_mask != 0).float()
                 # log_and_save (f"{title}-{idx}-epoch{epoch}-target-mask", target_mask.numpy())
         
+        (self.xp.log_path / 'images').mkdir(exist_ok=True)
         with evaluating(self.model), torch.no_grad():
             evaluate_images("Train Samples", self.data.monitored_train_samples)
             evaluate_images("Val Samples", self.data.monitored_val_samples)
@@ -429,6 +431,8 @@ def parse_command_line():
 
     parser.add_argument("--batch_size", type=int, default=DEFAULT_BATCH_SIZE)
 
+    parser.add_argument("--dataset", type=str, default="v5")
+    
     parser.add_argument("--model", type=str, default="uresnet18")
     parser.add_argument("--decoder_lr", type=float, default=1e-3)
     parser.add_argument("--encoder_lr", type=float, default=1e-4)
@@ -454,37 +458,7 @@ if __name__ == "__main__":
     # Note: __file__ does not work when run e.g. through Palanteer.
     # Alternative assuming a good cwd folder.
     # root_dir = Path().absolute()
-    datasets_path = [
-        # root_dir / 'inputs' / 'train' / 'arxiv/320x240',
-        # root_dir / 'inputs' / 'train' / 'arxiv/320x240_bg',
-        # root_dir / 'inputs' / 'train' / 'arxiv/640x480_bg',
-        # root_dir / 'inputs' / 'train' / 'arxiv/640x480',
-        # root_dir / 'inputs' / 'train' / 'arxiv/640x480_bg_upsampled',
-        # root_dir / 'inputs' / 'train' / 'arxiv/640x480_upsampled',
-        root_dir / 'inputs' / 'train' / 'opencv-drawings/320x240',
-        # root_dir / 'inputs' / 'train' / 'opencv-drawings/640x480',
-        # root_dir / 'inputs' / 'train' / 'opencv-drawings/640x480_upsampled',
-        root_dir / 'inputs' / 'train' / 'mpl-no-aa/320x240',
-        # root_dir / 'inputs' / 'train' / 'mpl-no-aa/640x480',
-        root_dir / 'inputs' / 'train' / 'mpl/320x240',
-        # root_dir / 'inputs' / 'train' / 'mpl/640x480',
-        # root_dir / 'inputs' / 'train' / 'mpl/640x480_upsampled',
-        root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/320x240',
-        # root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/640x480',
-        root_dir / 'inputs' / 'train' / 'mpl-scatter/320x240',
-        # root_dir / 'inputs' / 'train' / 'mpl-scatter/640x480',
-        # root_dir / 'inputs' / 'train' / 'mpl-scatter/640x480_upsampled',
-        
-        # root_dir / 'inputs' / 'train' / 'mpl-scatter/1280x960',
-        # root_dir / 'inputs' / 'train' / 'opencv-drawings-bg/1280x960',
-        # root_dir / 'inputs' / 'train' / 'mpl/1280x960',
-        # root_dir / 'inputs' / 'train' / 'mpl-no-aa/1280x960',
-        # root_dir / 'inputs' / 'train' / 'opencv-drawings/1280x960',
-        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_upsampled',
-        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_upsampled_bg',
-        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960',
-        # root_dir / 'inputs' / 'train' / 'arxiv/1280x960_bg',
-    ]
+    datasets_path = dlcharts.common.datasets.regression_datasets(root_dir, args.dataset)
 
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
@@ -501,6 +475,7 @@ if __name__ == "__main__":
     )
 
     hparams = Hparams(
+        dataset = args.dataset,
         batch_size = args.batch_size,
         encoder_lr = args.encoder_lr,
         decoder_lr = args.decoder_lr,

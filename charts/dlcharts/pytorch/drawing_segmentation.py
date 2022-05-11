@@ -226,7 +226,7 @@ def compute_average_loss (dataset_loader: DataLoader, net: nn.Module, criterion:
 class DrawingSegmentor:
     def __init__(self, network_model_pt: Path):
         self.device = torch.device("cpu")
-        self.preprocessor = ImagePreprocessor(self.device)
+        self.preprocessor = ImagePreprocessor(self.device, do_augmentations=True)
         self.net = torch.load (network_model_pt, map_location=self.device)
 
     def process_image(self, image_rgb: np.ndarray):

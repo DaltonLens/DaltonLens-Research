@@ -13,10 +13,11 @@ done
 
 generate_filelist() {        
     while read f; do
+        echo "inputs/test/$f.antialiased.png"
         for d in "$logdir"/*/*/evaluation; do 
-            echo "$d/$f"
+            echo "$d/$f.antialiased.png"
         done
-    done < test_images.txt
+    done < inputs/test/test_images.txt
 }
 
 generate_filelist | xargs -d '\n' zv

@@ -32,7 +32,7 @@ onnx.checker.check_model(model)
 print(onnx.helper.printable_graph(model.graph))
 
 device = torch.device("cpu")
-preprocessor = cr.ImagePreprocessor(device)
+preprocessor = cr.ImagePreprocessor(device, do_augmentations=False)
 image_rgb = swap_rb(cv2.imread("inputs/tests/mpl-generated/img-00000.antialiased.png", cv2.IMREAD_COLOR))
 input_tensor = preprocessor.transform (image_rgb, image_rgb)[0]
 input_tensor.unsqueeze_ (0) # add the batch dim

@@ -46,7 +46,7 @@ class ImagePreprocessor:
             assert len(images) == 3
             return [self.to_tensor(images[0]), self.to_tensor(images[1]), torch.from_numpy(images[2])]
 
-    def __init__(self, device: torch.device, cropping_border: int = 32):
+    def __init__(self, device: torch.device, do_augmentations: bool, cropping_border: int = 32):
 
         self.device = device
         transform_list = [
@@ -54,7 +54,7 @@ class ImagePreprocessor:
             # Both(transforms.Lambda(lambda x: x.to(device))),
             ApplyOnFloatOnly(transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5)))
         ]
-        if cropping_border is not None:
+        if do_augmentations:
             transform_list += [
                 segmentation_transforms.RandomCropWithRegressionLabels(cropping_border),
                 segmentation_transforms.RandomHorizontalFlip(0.5),
@@ -171,7 +171,7 @@ def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.
 class Processor:
     def __init__(self, model_or_torchscript):
         self.device = torch.device("cpu")
-        self.preprocessor = ImagePreprocessor(self.device)
+        self.preprocessor = ImagePreprocessor(self.device, do_augmentations=False)
         # self.net = torch.load (network_model_pt, map_location=self.device)
         if isinstance(model_or_torchscript, torch.nn.Module):
             self.net = model_or_torchscript.to (self.device)
@@ -207,10 +207,7 @@ class Processor:
         output_im = (output_im * 255).astype(np.uint8)
 
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])
-        input_cropped = (input_cropped * 255).astype(np.uint8)
-        
-        # zvlog.image ("original", input_cropped)
-        # zvlog.image ("filtered", output_im)
+        input_cropped = (input_cropped * 255).astype(np.uint8)    
         return output_im, input_cropped
 
 if __name__ == "__main__":

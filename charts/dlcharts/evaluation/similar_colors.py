@@ -304,7 +304,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
             output_folder_path.mkdir(parents=True, exist_ok=True)
         percent_good = []
         # Take the first 50 images.
-        json_files = list(itertools.islice(folder.glob('*.json'), 50))
+        json_files = list(itertools.islice(sorted(folder.glob('*.json')), 50))
         
         # Special case for folders without labeled images.
         if len (json_files) < 1:
