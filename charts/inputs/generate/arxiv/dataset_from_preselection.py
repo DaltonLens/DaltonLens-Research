@@ -221,12 +221,12 @@ def main (args):
         out_pdf = Path(tempdir) / pdf_file.name
         image_size = render_pdf (pdf_file, Path(tempdir))
 
-        run([script_path.parent / 'generate' / 'gt_from_pairs' / 'build' / 'gt_from_pairs',
+        run([script_path.parent / 'gt_from_pairs' / 'build' / 'gt_from_pairs',
             out_pdf.with_suffix('.r72.antialiased.png'), 
             out_pdf.with_suffix('.r72.aliased.png'),
             out_pdf.with_suffix('.r72'),])
 
-        run([script_path.parent / 'generate' / 'gt_from_pairs' / 'build' / 'gt_from_pairs',
+        run([script_path.parent / 'gt_from_pairs' / 'build' / 'gt_from_pairs',
             out_pdf.with_suffix('.r56.antialiased.png'), 
             out_pdf.with_suffix('.r56.aliased.png'),
             out_pdf.with_suffix('.r56'),])

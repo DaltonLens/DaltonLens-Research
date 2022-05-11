@@ -4,7 +4,9 @@ Layout:
 2203/preselection/{selected,discarded}
 2203/dataset/{validated,discarded}
 
-So far only arXiv_src_2203_{001,002,003}.tar have been used.
+Data used so far:
+- arXiv_src_2203_{001,002,003,004}.tar to generate training data.
+- arXiv_src_2203_{005,006,007} to generate test data.
 
 They were downloaded from the arxiv s3 buckets:
 https://arxiv.org/help/bulk_data_s3

@@ -12,7 +12,7 @@ import tempfile
 
 import fitz
 
-from .filter_figures import filter_pdf
+from filter_figures import filter_pdf
 
 def parse_command_line():
     parser = argparse.ArgumentParser(description='Extract relevant figures from axiv articles')
