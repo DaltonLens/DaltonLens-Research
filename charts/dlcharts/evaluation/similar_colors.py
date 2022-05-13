@@ -292,6 +292,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         test_dir / 'mpl-generated-scatter',
         test_dir / 'opencv-generated-background',
         test_dir / 'wild',
+        test_dir / 'arxiv',
     ]
     result_per_folder = {}
     if output_path.exists():
