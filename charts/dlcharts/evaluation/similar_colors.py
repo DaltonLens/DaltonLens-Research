@@ -191,7 +191,7 @@ def evaluate(labeled_image: LabeledImage, finder: SimilarColorFinder, easy_mode 
     num_samples = 20
     labels = labeled_image.json['labels']
     labels = labels[1:] # remove the first label, it's the background
-    num_samples_per_label = int(num_samples / len(labels))
+    num_samples_per_label = max(num_samples // len(labels), 5)
     precision_recall_f1_scores: List[Score] = []
     wait_for_input = True
     for label_entry in labels:
@@ -291,8 +291,10 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         test_dir / 'mpl-generated-no-antialiasing',
         test_dir / 'mpl-generated-scatter',
         test_dir / 'opencv-generated-background',
+        test_dir / 'arxiv' / '320x240',
+        test_dir / 'arxiv' / '640x480',
+        test_dir / 'arxiv' / '1280x960',
         test_dir / 'wild',
-        test_dir / 'arxiv',
     ]
     result_per_folder = {}
     if output_path.exists():

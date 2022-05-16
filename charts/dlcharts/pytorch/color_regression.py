@@ -168,6 +168,20 @@ def compute_accuracy (dataset_loader: DataLoader, net: nn.Module, criterion: nn.
             num_pixels += max_diff.numel()
     return num_good / num_pixels
 
+def pad_width (size: int, multiple: int):
+    return 0 if size % multiple == 0 else multiple - (size%multiple)
+
+# pad image to a multiple of 64
+def pad_image(im, multiple=64):
+    # H,W,C
+    rows = im.shape[0]
+    cols = im.shape[1]
+    rows_to_pad = pad_width(rows, multiple)
+    cols_to_pad = pad_width(cols, multiple)
+    if rows_to_pad == 0 and cols_to_pad == 0:
+        return im
+    return np.pad (im, ((0, rows_to_pad), (0, cols_to_pad), (0, 0)), mode='reflect')
+
 class Processor:
     def __init__(self, model_or_torchscript):
         self.device = torch.device("cpu")
@@ -185,19 +199,12 @@ class Processor:
         # self.net.eval()
         # torch.save(self.net, network_model_pt.with_suffix('.model.pt'))
 
-    def process_image(self, image_rgb: np.ndarray):
+    def process_image(self, image_rgb_raw: np.ndarray):
         # Faking the GT data.
+        image_rgb = pad_image (image_rgb_raw)
         fake_target_rgb = np.zeros_like(image_rgb, dtype=np.uint8)
         fake_fg_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1]), dtype=np.uint8)
         input: Tensor = list(self.preprocessor.transform ([image_rgb, fake_target_rgb, fake_fg_mask]))[0]
-        too_big = (image_rgb.shape[0] > 1280) or (image_rgb.shape[1] > 1280)
-        not_64_multiple = (image_rgb.shape[0] % 64 != 0) or (image_rgb.shape[1] % 64 != 0)
-        if not_64_multiple or too_big:
-            new_size_y, new_size_x = 64 * (image_rgb.shape[0] // 64), 64 * (image_rgb.shape[1] // 64)
-            new_size_x = min(new_size_x, 1280)
-            new_size_y = min(new_size_y, 1280)
-            # ic(new_size_x, new_size_y)
-            input = transforms.CenterCrop(min(new_size_x, new_size_y))(input)
         input.unsqueeze_ (0) # add the batch dim
         output = self.net (input)
         if isinstance(output, tuple): # RegressionModelOutput downcasted to tuple by torch.jit
@@ -207,7 +214,8 @@ class Processor:
         output_im = (output_im * 255).astype(np.uint8)
 
         input_cropped = self.preprocessor.denormalize_and_clip_as_numpy (input[0])
-        input_cropped = (input_cropped * 255).astype(np.uint8)    
+        input_cropped = (input_cropped * 255).astype(np.uint8)
+        output_im = output_im[:image_rgb_raw.shape[0], :image_rgb_raw.shape[1]]
         return output_im, input_cropped
 
 if __name__ == "__main__":
