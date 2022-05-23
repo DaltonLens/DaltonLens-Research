@@ -200,8 +200,19 @@ class Processor:
         # torch.save(self.net, network_model_pt.with_suffix('.model.pt'))
 
     def process_image(self, image_rgb_raw: np.ndarray):
+        raw_cols, raw_rows = image_rgb_raw.shape[:2]
+        too_big = (raw_cols > 1280) or (raw_rows > 1280)
+        if too_big:
+            if raw_rows > raw_cols:
+                target_size = (int(1280*raw_cols/raw_rows), 1280)
+            else:
+                target_size = (1280, int(1280*raw_rows/raw_cols))
+            image_rgb = cv2.resize (image_rgb_raw, target_size)
+        else:
+            image_rgb = image_rgb_raw
+        image_rgb = pad_image (image_rgb)
+        
         # Faking the GT data.
-        image_rgb = pad_image (image_rgb_raw)
         fake_target_rgb = np.zeros_like(image_rgb, dtype=np.uint8)
         fake_fg_mask = np.zeros((image_rgb.shape[0], image_rgb.shape[1]), dtype=np.uint8)
         input: Tensor = list(self.preprocessor.transform ([image_rgb, fake_target_rgb, fake_fg_mask]))[0]
