@@ -301,8 +301,9 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         shutil.rmtree(output_path)
     output_path.mkdir(parents=True, exist_ok=False)
     for folder in test_folders:
-        print (f"{folder.name}: ", end="")
-        output_folder_path = output_path / folder.name
+        folder_path = folder.relative_to (test_dir)
+        print (f"{folder_path}: ", end="")
+        output_folder_path = output_path / folder_path
         if save_images:
             output_folder_path.mkdir(parents=True, exist_ok=True)
         percent_good = []
@@ -312,7 +313,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         # Special case for folders without labeled images.
         if len (json_files) < 1:
             if save_images:
-                print (f"{folder.name}: generating images.")
+                print (f"{folder_path}: generating images.")
                 png_files = folder.glob('*.png')
                 for f in png_files:
                     raw_rgb = swap_rb(cv2.imread (str(f), cv2.IMREAD_COLOR))
@@ -338,7 +339,7 @@ def main_batch_evaluation (test_dir: Path, model, output_path: Path(), save_imag
         result_per_folder[folder] = np.mean (percent_good)
         print (f"{folder.name}: {result_per_folder[folder]:.1f}%")
     with open(output_path / 'evaluation.txt', 'w') as f:
-        f.write (" | ".join([f"{p.name}" for p in result_per_folder.keys()]))
+        f.write (" | ".join([f"{p.relative_to(test_dir)}" for p in result_per_folder.keys()]))
         f.write ("\n")
         f.write (" ".join([f"{p:.1f}" for p in result_per_folder.values()]))
         f.write ("\n")
